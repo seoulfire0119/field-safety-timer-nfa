@@ -1221,3 +1221,53 @@ body {
 .roster-modal .modal-header h2 {
     font-size: 1.3rem;
 }
+
+/* 편집 창: ① 안전센터 → ② 차량 단계 */
+.picker-step {
+    border: 2px solid transparent;
+    border-radius: 12px;
+    padding: 6px;
+    margin: 0 -6px;
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.picker-step-title {
+    font-size: 0.9rem;
+    font-weight: 800;
+    color: #333;
+    margin-bottom: 8px;
+}
+
+.picker-step .chip-row:not(:empty) {
+    margin-bottom: 4px;
+}
+
+.picker-divider {
+    border: none;
+    border-top: 2px dashed #c5d3e3;
+    margin: 10px 0;
+}
+
+.picker-error {
+    display: none;
+    color: #d32f2f;
+    font-size: 0.9rem;
+    font-weight: 700;
+    margin-top: 6px;
+}
+
+.picker-step.step-error {
+    border-color: #e53935;
+    background: #fff5f5;
+    animation: step-shake 0.4s ease;
+}
+
+.picker-step.step-error .picker-error {
+    display: block;
+}
+
+@keyframes step-shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-6px); }
+    75% { transform: translateX(6px); }
+}

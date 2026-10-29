@@ -169,8 +169,17 @@
                         <span>📋 출동대편성표에서 선택</span>
                     </div>
                     <p id="rosterInfo" class="roster-info"></p>
-                    <div id="rosterCenters" class="chip-row"></div>
-                    <div id="rosterVehicles" class="chip-row"></div>
+                    <div id="stepCenter" class="picker-step">
+                        <div class="picker-step-title">① 안전센터 선택</div>
+                        <div id="rosterCenters" class="chip-row"></div>
+                        <p class="picker-error">여기서 안전센터를 먼저 눌러 주세요.</p>
+                    </div>
+                    <hr class="picker-divider">
+                    <div id="stepVehicle" class="picker-step">
+                        <div class="picker-step-title">② 차량 선택</div>
+                        <div id="rosterVehicles" class="chip-row"></div>
+                        <p class="picker-error">여기서 차량을 눌러 주세요. 차량을 골라야 저장됩니다.</p>
+                    </div>
                     <div id="rosterMembers"></div>
                 </div>
 

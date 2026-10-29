@@ -213,7 +213,8 @@ class FieldSafetyTimer {
             vehicle: team ? team.vehicle || null : null,
             shift: (team && team.shift) || this.currentShift(),
             checked: new Set(team && team.members ? team.members.map(m => m.name) : []),
-            showMembers: false // 대원명은 '대원명 알아보기'를 눌러야 보인다
+            showMembers: false, // 대원명은 '대원명 알아보기'를 눌러야 보인다
+            error: null         // 'center' | 'vehicle': 저장하려는데 고르지 않은 단계
         };
         this.renderRosterPicker();
 
@@ -296,6 +297,7 @@ class FieldSafetyTimer {
     pickCenter(name) {
         this.pick.center = this.pick.center === name ? null : name;
         this.pick.vehicle = null;
+        if (this.pick.error === 'center' && this.pick.center) this.pick.error = 'vehicle';
         this.pick.checked.clear();
         this.renderRosterPicker();
     }
@@ -307,6 +309,7 @@ class FieldSafetyTimer {
             p.checked.clear();
         } else {
             p.vehicle = name;
+            p.error = null;
             p.showMembers = false;
             p.checked = new Set(this.pickMembers().map(m => m.name));
             const short = p.center.replace(/119안전센터$|안전센터$/, '').replace(/119구조대$/, '구조대');
@@ -348,10 +351,14 @@ class FieldSafetyTimer {
         const center = r.centers.find(c => c.name === p.center);
         vehiclesEl.innerHTML = center ? center.vehicles.map(v => `
             <button type="button" class="chip ${p.vehicle === v.name ? 'active' : ''}" data-vehicle="${escapeHtml(v.name)}">${escapeHtml(v.name)}</button>
-        `).join('') : '';
+        `).join('') : '<p class="roster-hint">위에서 ① 안전센터를 누르면 차량이 나옵니다.</p>';
+
+        // 고르지 않은 단계에 빨간 테두리
+        document.getElementById('stepCenter').classList.toggle('step-error', p.error === 'center');
+        document.getElementById('stepVehicle').classList.toggle('step-error', p.error === 'vehicle');
 
         if (!p.vehicle) {
-            membersEl.innerHTML = center ? '<p class="roster-hint">차량을 누르세요.</p>' : '<p class="roster-hint">안전센터를 누르세요.</p>';
+            membersEl.innerHTML = '';
             return;
         }
 
@@ -385,13 +392,25 @@ class FieldSafetyTimer {
         const name = document.getElementById('teamName').value.trim();
         const floor = parseInt(document.getElementById('assignedFloor').value) || null;
 
+        // 편성표에서 고른 차량과 진입 대원
+        const p = this.pick;
+
+        // 차량을 고르지 않으면 저장하지 않는다
+        if (this.roster && !p.vehicle) {
+            p.error = p.center ? 'vehicle' : 'center';
+            this.renderRosterPicker();
+            const step = document.getElementById(p.error === 'center' ? 'stepCenter' : 'stepVehicle');
+            step.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            this.showToast(p.error === 'center'
+                ? '① 안전센터를 누른 뒤 ② 차량을 눌러 주세요.'
+                : '② 차량을 눌러 주세요. 차량을 골라야 저장됩니다.', 'error');
+            return;
+        }
+
         if (!name) {
             this.showToast('대명을 입력해주세요.', 'error');
             return;
         }
-
-        // 편성표에서 고른 차량과 진입 대원
-        const p = this.pick;
         const vehicleInfo = {
             center: p.vehicle ? p.center : null,
             vehicle: p.vehicle || null,
