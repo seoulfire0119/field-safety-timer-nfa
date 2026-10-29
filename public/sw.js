@@ -1,5 +1,5 @@
 // 서비스 워커 - 오프라인 지원 및 캐싱
-const CACHE_NAME = 'field-safety-timer-v2.2.1';
+const CACHE_NAME = 'field-safety-timer-v2.2.2';
 const CACHE_URLS = [
     '/',
     '/index.html',
@@ -56,7 +56,29 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // 일반 리소스는 캐시 우선
+    // 화면 파일(HTML·JS·CSS)은 네트워크 우선: 새로고침하면 항상 최신 버전,
+    // 인터넷이 끊겼을 때만 저장해 둔 파일을 쓴다
+    const url = new URL(event.request.url);
+    const isAppFile = url.origin === self.location.origin &&
+        !url.pathname.startsWith('/lib/') &&
+        (event.request.mode === 'navigate' || /\.(html|js|css)$/.test(url.pathname));
+    if (isAppFile) {
+        event.respondWith(
+            fetch(event.request, { cache: 'no-cache' })
+                .then((response) => {
+                    if (response && response.status === 200 && response.type === 'basic') {
+                        const copy = response.clone();
+                        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+                    }
+                    return response;
+                })
+                .catch(() => caches.match(event.request)
+                    .then((cached) => cached || (event.request.mode === 'navigate' ? caches.match('/index.html') : undefined)))
+        );
+        return;
+    }
+
+    // 그 밖의 리소스(그림, 라이브러리)는 캐시 우선
     event.respondWith(
         caches.match(event.request)
             .then((response) => {
