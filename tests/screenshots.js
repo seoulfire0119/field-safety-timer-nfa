@@ -32,7 +32,7 @@ const OUT = path.join(__dirname, '..', 'docs', 'screenshots');
     await page.evaluate(() => {
         const app = window.fieldSafetyTimer;
         app.teams = app.teams.filter((t) => t.vehicle);
-        const ago = [8, 16, 21];
+        const ago = [41, 31, 8]; // 작전 펌프차 위험, 계산 펌프차 경고, 구조버스 진입중
         app.teams.forEach((t, i) => { t.status = 'active'; t.entryTime = Date.now() - ago[i] * 60000; });
         app.saveTeams();
         app.render();

@@ -3,8 +3,8 @@ class FieldSafetyTimer {
     constructor() {
         this.teams = [];
         this.settings = {
-            warningTime: 15, // 분
-            dangerTime: 20,  // 분
+            warningTime: 30, // 분
+            dangerTime: 40,  // 분
             soundEnabled: true,
             vibrationEnabled: true,
             voiceEnabled: true,  // 음성 안내
@@ -41,6 +41,12 @@ class FieldSafetyTimer {
 
             this.teams = savedTeams;
             this.settings = { ...this.settings, ...savedSettings };
+            // 예전 기본값(15/20분)을 그대로 쓰던 기기는 새 기본값(30/40분)으로
+            if (savedSettings && savedSettings.warningTime === 15 && savedSettings.dangerTime === 20) {
+                this.settings.warningTime = 30;
+                this.settings.dangerTime = 40;
+                this.saveSettings();
+            }
 
             // 기본 팀들이 없으면 생성
             if (this.teams.length === 0) {
@@ -563,8 +569,8 @@ class FieldSafetyTimer {
 
     // 설정 업데이트
     updateSettings() {
-        this.settings.warningTime = parseInt(document.getElementById('warningTime').value) || 15;
-        this.settings.dangerTime = parseInt(document.getElementById('dangerTime').value) || 20;
+        this.settings.warningTime = parseInt(document.getElementById('warningTime').value) || 30;
+        this.settings.dangerTime = parseInt(document.getElementById('dangerTime').value) || 40;
         this.settings.soundEnabled = document.getElementById('soundEnabled').checked;
         this.settings.vibrationEnabled = document.getElementById('vibrationEnabled').checked;
         this.settings.voiceEnabled = document.getElementById('voiceEnabled').checked;

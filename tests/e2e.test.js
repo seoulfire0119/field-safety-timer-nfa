@@ -94,16 +94,16 @@ test('경고·위험: 음성·화면 깜빡임·기록, 화면 꺼짐 방지', a
     await sleep(400);
     assert.equal(await page.evaluate(() => window.__wake), 1, '진입 중 화면 꺼짐 방지');
 
-    await page.evaluate(() => { window.fieldSafetyTimer.teams.at(-1).entryTime = Date.now() - 16 * 60000; });
+    await page.evaluate(() => { window.fieldSafetyTimer.teams.at(-1).entryTime = Date.now() - 31 * 60000; });
     await sleep(1500);
     assert.ok(await page.evaluate(() => document.body.classList.contains('flash-warning')));
-    await page.evaluate(() => { window.fieldSafetyTimer.teams.at(-1).entryTime = Date.now() - 21 * 60000; });
+    await page.evaluate(() => { window.fieldSafetyTimer.teams.at(-1).entryTime = Date.now() - 41 * 60000; });
     await sleep(1500);
     assert.ok(await page.evaluate(() => document.body.classList.contains('flash-danger')));
-    assert.match(await page.$eval('#alertFlashBanner', (e) => e.textContent), /계산 펌프차 21분/);
+    assert.match(await page.$eval('#alertFlashBanner', (e) => e.textContent), /계산 펌프차 41분/);
     assert.deepEqual(await page.evaluate(() => window.__spoken), [
-        '경고. 계산 펌프차, 15분 경과.',
-        '위험. 계산 펌프차, 20분 경과. 즉시 확인하세요.'
+        '경고. 계산 펌프차, 30분 경과.',
+        '위험. 계산 펌프차, 40분 경과. 즉시 확인하세요.'
     ]);
 
     await (await lastCard(page)).$eval('.btn-pause', (b) => b.click());
@@ -121,6 +121,6 @@ test('경고·위험: 음성·화면 깜빡임·기록, 화면 꺼짐 방지', a
     const csv = await page.evaluate(() => window.__csv);
     assert.equal(await page.evaluate(() => window.__csvBom), '239,187,191', '엑셀 한글 깨짐 방지 BOM');
     assert.match(csv, /^﻿"날짜","시각","출동대","대명","내용"/);
-    assert.match(csv, /"계산119안전센터","계산 펌프차","위험","21:00","⭐노승현/);
+    assert.match(csv, /"계산119안전센터","계산 펌프차","위험","41:00","⭐노승현/);
     assert.deepEqual(page.errors, []);
 });
