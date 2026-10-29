@@ -13,9 +13,23 @@ docker compose up -d --build
 
 중지: `docker compose down`
 
+## 출동대편성표 불러오기
+
+헤더의 📋 버튼으로 출동대편성표(엑셀 xlsx · 한글 hwpx · PDF)를 불러오면,
+연필(편집) 창에서 **안전센터 → 차량 → 주간/야간 → 진입 대원 체크** 순서로 고를 수 있다.
+타이머 카드에 소속 센터, 차량, 진입 대원이 표시된다.
+
+- 표에서 `차량` 칸을 찾고, `(당번)` 팀의 운전요원·진압대원 열을 읽는다.
+- `주)`, `야)` 로 나뉜 칸은 주간/야간 대원으로 나눈다. `(고새봄)` 처럼 괄호로 쓴 겸직 대원도 포함한다.
+- 안전센터 칸의 `[작전]` → `작전119안전센터`. 센터가 여러 개면 센터별로 나뉜다.
+- hwp(옛 한글 형식)는 읽을 수 없으니 한글에서 hwpx 로 저장해서 올린다.
+- 샘플(가짜 이름): `public/samples/roster-sample.xlsx|hwpx|pdf` — 앱의 편집 창에서 **🧪 샘플로 체험하기** 또는 내려받기.
+  `python samples/build_samples.py` 로 다시 만든다(한글 프로그램 필요).
+
 ## 구성
 
-- `public/` — 앱 파일 (index.html, app.js, intro.js, storage.js, styles.css, sw.js …)
+- `public/` — 앱 파일 (index.html, app.js, roster.js, intro.js, storage.js, styles.css, sw.js …)
+- `public/lib/` — 편성표 읽기용 라이브러리 (SheetJS, JSZip, pdf.js) — 인터넷 없이도 동작하도록 포함
 - `Dockerfile`, `nginx.conf` — nginx 로 `public/` 을 서비스
 - `docker-compose.yml` — 8080 포트로 실행
 

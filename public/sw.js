@@ -1,5 +1,5 @@
 // 서비스 워커 - 오프라인 지원 및 캐싱
-const CACHE_NAME = 'field-safety-timer-v2.0.0';
+const CACHE_NAME = 'field-safety-timer-v2.1.1';
 const CACHE_URLS = [
     '/',
     '/index.html',
@@ -8,6 +8,7 @@ const CACHE_URLS = [
     '/intro.js',
     '/image/intro-1.jpg',
     '/storage.js',
+    '/roster.js',
     '/manifest.json',
     '/icon-192x192.png',
     '/icon-144x144.png',

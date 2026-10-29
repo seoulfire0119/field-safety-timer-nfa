@@ -911,3 +911,199 @@ body {
     border: 2px solid rgba(255, 255, 255, 0.85);
     padding: 0 20px;
 }
+
+/* 출동대편성표에서 선택 */
+.roster-picker {
+    background: #f7f9fc;
+    border: 2px solid #dce6f1;
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 20px;
+}
+
+.roster-picker-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    color: #333;
+}
+
+.roster-upload-btn {
+    border: none;
+    background: #1976d2;
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.85rem;
+    border-radius: 999px;
+    padding: 6px 14px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.roster-info {
+    font-size: 0.85rem;
+    color: #666;
+    margin: 6px 0 10px;
+}
+
+.roster-hint {
+    font-size: 0.85rem;
+    color: #888;
+    margin: 4px 0 8px;
+}
+
+.chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.chip-row:not(:empty) {
+    margin-bottom: 10px;
+}
+
+.chip {
+    border: 2px solid #c5d3e3;
+    background: #fff;
+    color: #333;
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    min-height: 40px;
+}
+
+.chip.active {
+    background: #c62828;
+    border-color: #c62828;
+    color: #fff;
+}
+
+.chip-center.active {
+    background: #1976d2;
+    border-color: #1976d2;
+}
+
+.shift-toggle {
+    display: inline-flex;
+    border: 2px solid #c5d3e3;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+.shift-toggle button {
+    border: none;
+    background: #fff;
+    padding: 8px 16px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.shift-toggle button.active {
+    background: #333;
+    color: #fff;
+}
+
+.member-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 6px;
+}
+
+.member-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 8px 10px;
+    cursor: pointer;
+    min-height: 44px;
+}
+
+.member-check input {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+.member-check span {
+    word-break: keep-all;
+}
+
+.member-check em {
+    margin-left: auto;
+    font-style: normal;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #1976d2;
+    background: #e3f2fd;
+    border-radius: 6px;
+    padding: 2px 6px;
+}
+
+/* 카드: 소속 센터와 진입 대원 */
+.team-center {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #1976d2;
+}
+
+.team-members {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: -8px 0 16px;
+}
+
+.team-members-count {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #555;
+}
+
+.member-chip {
+    font-size: 0.85rem;
+    background: #f1f1f1;
+    border-radius: 999px;
+    padding: 3px 10px;
+}
+
+.member-chip.driver {
+    background: #e3f2fd;
+    color: #0d47a1;
+    font-weight: 700;
+}
+
+.roster-samples {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    font-size: 0.85rem;
+    color: #666;
+    margin-bottom: 10px;
+}
+
+.roster-samples a {
+    color: #1976d2;
+    font-weight: 700;
+}
+
+.roster-sample-btn {
+    border: 2px dashed #1976d2;
+    background: #fff;
+    color: #1976d2;
+    font-weight: 700;
+    font-size: 0.85rem;
+    border-radius: 999px;
+    padding: 6px 12px;
+    cursor: pointer;
+}

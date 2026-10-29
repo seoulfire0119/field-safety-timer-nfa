@@ -36,10 +36,14 @@
             </div>
             <div class="header-actions">
                 <button id="helpBtn" class="btn-help" title="사용방법 안내">📖 사용방법 안내</button>
+                <button id="rosterBtn" class="btn-icon" title="출동대편성표 불러오기">📋</button>
                 <button id="settingsBtn" class="btn-icon">⚙️</button>
                 <button id="addTeamBtn" class="btn-icon">➕</button>
             </div>
         </header>
+
+        <!-- 출동대편성표 파일 선택 (📋 버튼으로 연다) -->
+        <input type="file" id="rosterFile" accept=".xlsx,.xls,.hwpx,.hwp,.pdf" hidden>
 
         <!-- 전체 상황판 -->
         <div class="status-overview">
@@ -132,6 +136,26 @@
                 <button id="closeTeamModalBtn" class="btn-close">✕</button>
             </div>
             <div class="modal-body">
+                <!-- 출동대편성표에서 선택 -->
+                <div id="rosterPicker" class="roster-picker">
+                    <div class="roster-picker-head">
+                        <span>📋 출동대편성표에서 선택</span>
+                        <button type="button" id="rosterUploadInModal" class="roster-upload-btn">불러오기</button>
+                    </div>
+                    <p id="rosterInfo" class="roster-info"></p>
+                    <div class="roster-samples">
+                        <button type="button" id="rosterSampleBtn" class="roster-sample-btn">🧪 샘플로 체험하기</button>
+                        <span>샘플 받기:
+                            <a href="samples/roster-sample.xlsx" download="출동대편성표(샘플).xlsx">엑셀</a> ·
+                            <a href="samples/roster-sample.hwpx" download="출동대편성표(샘플).hwpx">한글</a> ·
+                            <a href="samples/roster-sample.pdf" download="출동대편성표(샘플).pdf">PDF</a>
+                        </span>
+                    </div>
+                    <div id="rosterCenters" class="chip-row"></div>
+                    <div id="rosterVehicles" class="chip-row"></div>
+                    <div id="rosterMembers"></div>
+                </div>
+
                 <div class="form-group">
                     <label for="teamName">대명</label>
                     <input type="text" id="teamName" placeholder="예: 성산대, 1착대">
@@ -171,6 +195,7 @@
     </div>
 
     <script src="storage.js"></script>
+    <script src="roster.js"></script>
     <script src="app.js"></script>
     <script src="intro.js"></script>
     <script>

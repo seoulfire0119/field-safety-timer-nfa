@@ -14,7 +14,12 @@
         {
             target: '.team-card .btn-edit',
             pill: ['pill-orange', '✏️ 이름 변경'],
-            text: '<b>연필</b> 버튼으로 1착대 이름을 바꿀 수 있습니다.<br><span class="tour-ex">예) 작전대, 등촌대</span>'
+            text: '<b>연필</b> 버튼으로 1착대 이름을 바꿀 수 있습니다.<br>편성표를 불러왔다면 <b>안전센터 → 차량</b>을 눌러 탑승 대원까지 넣을 수 있습니다.'
+        },
+        {
+            target: '#rosterBtn',
+            pill: ['pill-blue', '📋 편성표'],
+            text: '<b>출동대편성표</b>(엑셀·한글 hwpx·PDF)를 불러옵니다.<br>차량별로 <b>누가 진입했고 얼마나 됐는지</b> 볼 수 있습니다.'
         },
         {
             target: '#settingsBtn',

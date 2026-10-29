@@ -11,6 +11,8 @@ class FieldSafetyTimer {
         };
         this.timers = new Map(); // 각 팀별 타이머 저장
         this.alarmIntervals = new Map(); // 각 팀별 알람 반복 인터벌 저장
+        this.roster = null; // 불러온 출동대편성표
+        this.pick = null;   // 편집 창에서 고른 센터/차량/대원
         this.init();
     }
 
@@ -26,6 +28,7 @@ class FieldSafetyTimer {
         try {
             const savedTeams = await loadData('teams', []);
             const savedSettings = await loadData('settings', this.settings);
+            this.roster = await loadData('roster', null);
 
             this.teams = savedTeams;
             this.settings = { ...this.settings, ...savedSettings };
@@ -74,6 +77,15 @@ class FieldSafetyTimer {
             this.showTeamModal();
         });
 
+        // 출동대편성표 불러오기
+        const rosterFile = document.getElementById('rosterFile');
+        document.getElementById('rosterBtn').addEventListener('click', () => rosterFile.click());
+        rosterFile.addEventListener('change', () => {
+            const file = rosterFile.files[0];
+            rosterFile.value = '';
+            if (file) this.importRoster(file);
+        });
+
         // 모달 관련 이벤트
         this.setupModalEvents();
 
@@ -115,6 +127,29 @@ class FieldSafetyTimer {
 
         document.getElementById('deleteTeamBtn').addEventListener('click', () => {
             this.deleteCurrentTeam();
+        });
+
+        // 편성표에서 센터 → 차량 → 대원 고르기
+        document.getElementById('rosterUploadInModal').addEventListener('click', () => {
+            document.getElementById('rosterFile').click();
+        });
+        document.getElementById('rosterSampleBtn').addEventListener('click', () => {
+            this.loadSampleRoster();
+        });
+        const picker = document.getElementById('rosterPicker');
+        picker.addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-center], button[data-vehicle], button[data-shift]');
+            if (!btn) return;
+            if (btn.dataset.center !== undefined) this.pickCenter(btn.dataset.center);
+            else if (btn.dataset.vehicle !== undefined) this.pickVehicle(btn.dataset.vehicle);
+            else this.pickShift(btn.dataset.shift);
+        });
+        picker.addEventListener('change', (e) => {
+            const box = e.target.closest('input[data-member]');
+            if (!box) return;
+            if (box.checked) this.pick.checked.add(box.dataset.member);
+            else this.pick.checked.delete(box.dataset.member);
+            this.renderRosterPicker();
         });
 
         // 확인 다이얼로그
@@ -169,8 +204,152 @@ class FieldSafetyTimer {
             this.currentEditingTeam = null;
         }
 
+        this.pick = {
+            center: team ? team.center || null : null,
+            vehicle: team ? team.vehicle || null : null,
+            shift: (team && team.shift) || this.currentShift(),
+            checked: new Set(team && team.members ? team.members.map(m => m.name) : [])
+        };
+        this.renderRosterPicker();
+
         this.showModal('teamModal');
-        nameInput.focus();
+        if (!this.roster) nameInput.focus();
+    }
+
+    // ---------------------------------------------------------- 출동대편성표
+    async importRoster(file) {
+        this.showToast('편성표를 읽는 중입니다...', 'info');
+        try {
+            const roster = await Roster.parseRosterFile(file);
+            this.roster = roster;
+            saveData('roster', roster);
+            const vehicles = roster.centers.reduce((n, c) => n + c.vehicles.length, 0);
+            this.showToast(`${roster.centers.map(c => c.name).join(', ')} · 차량 ${vehicles}대를 불러왔습니다.`, 'success');
+            if (document.getElementById('teamModal').classList.contains('show')) {
+                this.renderRosterPicker();
+            } else {
+                // 바로 차량을 고를 수 있게 대 추가 창을 연다
+                this.showTeamModal();
+            }
+        } catch (error) {
+            console.error('편성표 읽기 실패:', error);
+            this.showToast(error.message || '편성표를 읽지 못했습니다.', 'error');
+        }
+    }
+
+    // 예시(가짜 이름) 편성표로 체험
+    async loadSampleRoster() {
+        try {
+            const res = await fetch('samples/roster-sample.xlsx');
+            if (!res.ok) throw new Error();
+            const blob = await res.blob();
+            await this.importRoster(new File([blob], '출동대편성표(샘플).xlsx'));
+        } catch (error) {
+            this.showToast('샘플 편성표를 불러오지 못했습니다.', 'error');
+        }
+    }
+
+    // 09~18시는 주간, 나머지는 야간
+    currentShift() {
+        const h = new Date().getHours();
+        return h >= 9 && h < 18 ? 'day' : 'night';
+    }
+
+    findVehicle(centerName, vehicleName) {
+        if (!this.roster || !centerName || !vehicleName) return null;
+        const center = this.roster.centers.find(c => c.name === centerName);
+        return center ? center.vehicles.find(v => v.name === vehicleName) || null : null;
+    }
+
+    // 고른 차량·근무조의 탑승 대원 (운전요원 먼저)
+    pickMembers() {
+        const p = this.pick;
+        const vehicle = this.findVehicle(p.center, p.vehicle);
+        if (!vehicle) {
+            // 편성표가 바뀌어 차량이 없으면 저장된 대원을 그대로 보여 준다
+            const team = this.currentEditingTeam;
+            return team && team.vehicle === p.vehicle && team.members ? team.members : [];
+        }
+        const list = [];
+        vehicle.driver[p.shift].forEach(name => list.push({ name, role: '운전' }));
+        vehicle.crew[p.shift].forEach(name => list.push({ name, role: '진압' }));
+        return list.filter((m, i) => list.findIndex(x => x.name === m.name) === i);
+    }
+
+    pickCenter(name) {
+        this.pick.center = this.pick.center === name ? null : name;
+        this.pick.vehicle = null;
+        this.pick.checked.clear();
+        this.renderRosterPicker();
+    }
+
+    pickVehicle(name) {
+        const p = this.pick;
+        if (p.vehicle === name) {
+            p.vehicle = null;
+            p.checked.clear();
+        } else {
+            p.vehicle = name;
+            p.checked = new Set(this.pickMembers().map(m => m.name));
+            const short = p.center.replace(/119안전센터$|안전센터$/, '');
+            document.getElementById('teamName').value = `${short} ${name}`.trim();
+        }
+        this.renderRosterPicker();
+    }
+
+    pickShift(shift) {
+        this.pick.shift = shift;
+        this.pick.checked = new Set(this.pickMembers().map(m => m.name));
+        this.renderRosterPicker();
+    }
+
+    renderRosterPicker() {
+        const r = this.roster;
+        const p = this.pick;
+        const info = document.getElementById('rosterInfo');
+        const centersEl = document.getElementById('rosterCenters');
+        const vehiclesEl = document.getElementById('rosterVehicles');
+        const membersEl = document.getElementById('rosterMembers');
+        document.getElementById('rosterUploadInModal').textContent = r ? '다시 불러오기' : '불러오기';
+
+        if (!r) {
+            info.textContent = '편성표(엑셀·한글 hwpx·PDF)를 불러오면 안전센터 → 차량을 눌러 탑승 대원까지 넣을 수 있습니다.';
+            centersEl.innerHTML = vehiclesEl.innerHTML = membersEl.innerHTML = '';
+            return;
+        }
+
+        info.textContent = [r.org, r.date].filter(Boolean).join(' · ') || r.fileName;
+        centersEl.innerHTML = r.centers.map(c => `
+            <button type="button" class="chip chip-center ${p.center === c.name ? 'active' : ''}" data-center="${escapeHtml(c.name)}">${escapeHtml(c.name)}</button>
+        `).join('');
+
+        const center = r.centers.find(c => c.name === p.center);
+        vehiclesEl.innerHTML = center ? center.vehicles.map(v => `
+            <button type="button" class="chip ${p.vehicle === v.name ? 'active' : ''}" data-vehicle="${escapeHtml(v.name)}">${escapeHtml(v.name)}</button>
+        `).join('') : '';
+
+        if (!p.vehicle) {
+            membersEl.innerHTML = center ? '<p class="roster-hint">차량을 누르세요.</p>' : '<p class="roster-hint">안전센터를 누르세요.</p>';
+            return;
+        }
+
+        const members = this.pickMembers();
+        membersEl.innerHTML = `
+            <div class="shift-toggle">
+                <button type="button" class="${p.shift === 'day' ? 'active' : ''}" data-shift="day">☀️ 주간</button>
+                <button type="button" class="${p.shift === 'night' ? 'active' : ''}" data-shift="night">🌙 야간</button>
+            </div>
+            <p class="roster-hint">진입하는 대원을 체크하세요. (${p.checked.size}/${members.length}명)</p>
+            <div class="member-list">
+                ${members.length ? members.map(m => `
+                    <label class="member-check">
+                        <input type="checkbox" data-member="${escapeHtml(m.name)}" ${p.checked.has(m.name) ? 'checked' : ''}>
+                        <span>${escapeHtml(m.name)}</span>
+                        ${m.role === '운전' ? '<em>운전</em>' : ''}
+                    </label>
+                `).join('') : '<p class="roster-hint">편성표에 이 근무조 탑승 대원이 없습니다.</p>'}
+            </div>
+        `;
     }
 
     // 팀 저장
@@ -183,16 +362,27 @@ class FieldSafetyTimer {
             return;
         }
 
+        // 편성표에서 고른 차량과 진입 대원
+        const p = this.pick;
+        const vehicleInfo = {
+            center: p.vehicle ? p.center : null,
+            vehicle: p.vehicle || null,
+            shift: p.vehicle ? p.shift : null,
+            members: p.vehicle ? this.pickMembers().filter(m => p.checked.has(m.name)) : []
+        };
+
         if (this.currentEditingTeam) {
             // 편집
             this.currentEditingTeam.name = name;
             this.currentEditingTeam.floor = floor;
+            Object.assign(this.currentEditingTeam, vehicleInfo);
         } else {
             // 새 팀 추가
             const newTeam = {
                 id: this.generateId(),
                 name: name,
                 floor: floor,
+                ...vehicleInfo,
                 status: 'waiting',
                 entryTime: null,
                 withdrawTime: null
@@ -788,7 +978,8 @@ class FieldSafetyTimer {
             <div class="team-card status-${team.status === 'paused' ? (team.pausedFromStatus || 'active') : team.status}" data-team-id="${team.id}">
                 <div class="team-header">
                     <div class="team-info">
-                        <h3>${team.name}</h3>
+                        ${team.center ? `<div class="team-center">🚒 ${escapeHtml(team.center)}</div>` : ''}
+                        <h3>${escapeHtml(team.name)}</h3>
                         <div class="team-floor">
                             <span>🏢</span>
                             <span>${team.floor ? team.floor + '층' : '배정층 없음'}</span>
@@ -799,6 +990,8 @@ class FieldSafetyTimer {
                         <button class="btn-small btn-delete" title="삭제">🗑️</button>
                     </div>
                 </div>
+
+                ${this.renderTeamMembers(team)}
 
                 <div class="timer-display">
                     <div class="timer-text status-${team.status === 'paused' ? (team.pausedFromStatus || 'active') : team.status}">${timerDisplay}</div>
@@ -819,6 +1012,17 @@ class FieldSafetyTimer {
                 <div class="team-controls">
                     ${this.renderTeamControls(team)}
                 </div>
+            </div>
+        `;
+    }
+
+    // 진입 대원 표시
+    renderTeamMembers(team) {
+        if (!team.members || !team.members.length) return '';
+        return `
+            <div class="team-members">
+                <span class="team-members-count">👥 ${team.members.length}명</span>
+                ${team.members.map(m => `<span class="member-chip ${m.role === '운전' ? 'driver' : ''}">${escapeHtml(m.name)}</span>`).join('')}
             </div>
         `;
     }
@@ -938,11 +1142,19 @@ class FieldSafetyTimer {
         this.alarmIntervals.clear();
 
         this.teams = [];
+        this.roster = null;
         this.timers.clear();
         clearAllData();
         this.render();
         this.showToast('모든 데이터가 초기화되었습니다.', 'success');
     }
+}
+
+// 편성표 등 파일에서 온 글자를 화면에 넣을 때
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 // 앱 초기화
