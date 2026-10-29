@@ -1107,3 +1107,78 @@ body {
     padding: 6px 12px;
     cursor: pointer;
 }
+
+.roster-samples[hidden] {
+    display: none;
+}
+
+/* 센터 버튼 옆 주간/야간 */
+.chip-row .shift-toggle {
+    margin-bottom: 0;
+    align-self: center;
+}
+
+/* 대원명 알아보기 (편집 창·카드) */
+.btn-members {
+    border: 2px solid #c5d3e3;
+    background: #fff;
+    color: #333;
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    min-height: 40px;
+    margin-bottom: 8px;
+}
+
+.btn-members.open {
+    background: #333;
+    border-color: #333;
+    color: #fff;
+}
+
+.team-members .btn-members {
+    margin-bottom: 0;
+}
+
+/* 센터 버튼들(왼쪽, 여러 개면 줄바꿈) + 주간/야간(오른쪽 고정) */
+#rosterCenters:not(:empty) {
+    flex-wrap: nowrap;
+    align-items: flex-start;
+}
+
+.center-chips {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.center-chips .chip {
+    max-width: 100%;
+    word-break: keep-all;
+}
+
+#rosterCenters .shift-toggle {
+    flex-shrink: 0;
+}
+
+#rosterCenters .shift-toggle button {
+    padding: 8px 10px;
+    font-size: 0.85rem;
+    min-height: 36px;
+}
+
+/* 좁은 휴대폰: 주간/야간은 아이콘만 */
+@media (max-width: 400px) {
+    #rosterCenters .shift-label {
+        display: none;
+    }
+
+    #rosterCenters .shift-toggle button {
+        padding: 8px 10px;
+        font-size: 1rem;
+    }
+}

@@ -13,6 +13,7 @@ class FieldSafetyTimer {
         this.alarmIntervals = new Map(); // 각 팀별 알람 반복 인터벌 저장
         this.roster = null; // 불러온 출동대편성표
         this.pick = null;   // 편집 창에서 고른 센터/차량/대원
+        this.openMembers = new Set(); // 대원명을 펼친 카드
         this.init();
     }
 
@@ -138,9 +139,12 @@ class FieldSafetyTimer {
         });
         const picker = document.getElementById('rosterPicker');
         picker.addEventListener('click', (e) => {
-            const btn = e.target.closest('button[data-center], button[data-vehicle], button[data-shift]');
+            const btn = e.target.closest('button[data-center], button[data-vehicle], button[data-shift], button[data-toggle-members]');
             if (!btn) return;
-            if (btn.dataset.center !== undefined) this.pickCenter(btn.dataset.center);
+            if (btn.dataset.toggleMembers !== undefined) {
+                this.pick.showMembers = !this.pick.showMembers;
+                this.renderRosterPicker();
+            } else if (btn.dataset.center !== undefined) this.pickCenter(btn.dataset.center);
             else if (btn.dataset.vehicle !== undefined) this.pickVehicle(btn.dataset.vehicle);
             else this.pickShift(btn.dataset.shift);
         });
@@ -208,7 +212,8 @@ class FieldSafetyTimer {
             center: team ? team.center || null : null,
             vehicle: team ? team.vehicle || null : null,
             shift: (team && team.shift) || this.currentShift(),
-            checked: new Set(team && team.members ? team.members.map(m => m.name) : [])
+            checked: new Set(team && team.members ? team.members.map(m => m.name) : []),
+            showMembers: false // 대원명은 '대원명 알아보기'를 눌러야 보인다
         };
         this.renderRosterPicker();
 
@@ -290,6 +295,7 @@ class FieldSafetyTimer {
             p.checked.clear();
         } else {
             p.vehicle = name;
+            p.showMembers = false;
             p.checked = new Set(this.pickMembers().map(m => m.name));
             const short = p.center.replace(/119안전센터$|안전센터$/, '');
             document.getElementById('teamName').value = `${short} ${name}`.trim();
@@ -311,6 +317,7 @@ class FieldSafetyTimer {
         const vehiclesEl = document.getElementById('rosterVehicles');
         const membersEl = document.getElementById('rosterMembers');
         document.getElementById('rosterUploadInModal').textContent = r ? '다시 불러오기' : '불러오기';
+        document.querySelector('#rosterPicker .roster-samples').hidden = !!r;
 
         if (!r) {
             info.textContent = '편성표(엑셀·한글 hwpx·PDF)를 불러오면 안전센터 → 차량을 눌러 탑승 대원까지 넣을 수 있습니다.';
@@ -319,9 +326,14 @@ class FieldSafetyTimer {
         }
 
         info.textContent = [r.org, r.date].filter(Boolean).join(' · ') || r.fileName;
-        centersEl.innerHTML = r.centers.map(c => `
+        centersEl.innerHTML = `<div class="center-chips">${r.centers.map(c => `
             <button type="button" class="chip chip-center ${p.center === c.name ? 'active' : ''}" data-center="${escapeHtml(c.name)}">${escapeHtml(c.name)}</button>
-        `).join('');
+        `).join('')}</div>
+            <div class="shift-toggle">
+                <button type="button" class="${p.shift === 'day' ? 'active' : ''}" data-shift="day" title="주간">☀️<span class="shift-label"> 주간</span></button>
+                <button type="button" class="${p.shift === 'night' ? 'active' : ''}" data-shift="night" title="야간">🌙<span class="shift-label"> 야간</span></button>
+            </div>
+        `;
 
         const center = r.centers.find(c => c.name === p.center);
         vehiclesEl.innerHTML = center ? center.vehicles.map(v => `
@@ -334,12 +346,18 @@ class FieldSafetyTimer {
         }
 
         const members = this.pickMembers();
+        const toggle = `
+            <button type="button" class="btn-members ${p.showMembers ? 'open' : ''}" data-toggle-members>
+                👥 ${p.checked.size}/${members.length}명 진입 · ${p.showMembers ? '대원명 숨기기' : '대원명 알아보기'}
+            </button>
+        `;
+        if (!p.showMembers) {
+            membersEl.innerHTML = toggle;
+            return;
+        }
         membersEl.innerHTML = `
-            <div class="shift-toggle">
-                <button type="button" class="${p.shift === 'day' ? 'active' : ''}" data-shift="day">☀️ 주간</button>
-                <button type="button" class="${p.shift === 'night' ? 'active' : ''}" data-shift="night">🌙 야간</button>
-            </div>
-            <p class="roster-hint">진입하는 대원을 체크하세요. (${p.checked.size}/${members.length}명)</p>
+            ${toggle}
+            <p class="roster-hint">진입하는 대원을 체크하세요.</p>
             <div class="member-list">
                 ${members.length ? members.map(m => `
                     <label class="member-check">
@@ -735,6 +753,16 @@ class FieldSafetyTimer {
 
     // 개별 팀 카드에 이벤트 리스너 추가
     addTeamCardEventListeners(team, card) {
+        // 대원명 알아보기
+        const membersBtn = card.querySelector('.btn-members');
+        if (membersBtn) {
+            membersBtn.addEventListener('click', () => {
+                if (this.openMembers.has(team.id)) this.openMembers.delete(team.id);
+                else this.openMembers.add(team.id);
+                this.updateSingleTeamCard(team);
+            });
+        }
+
         // 편집 버튼
         const editBtn = card.querySelector('.btn-edit');
         if (editBtn) {
@@ -1019,10 +1047,13 @@ class FieldSafetyTimer {
     // 진입 대원 표시
     renderTeamMembers(team) {
         if (!team.members || !team.members.length) return '';
+        const open = this.openMembers.has(team.id);
         return `
             <div class="team-members">
-                <span class="team-members-count">👥 ${team.members.length}명</span>
-                ${team.members.map(m => `<span class="member-chip ${m.role === '운전' ? 'driver' : ''}">${escapeHtml(m.name)}</span>`).join('')}
+                <button type="button" class="btn-members ${open ? 'open' : ''}">
+                    👥 ${team.members.length}명 진입 · ${open ? '대원명 숨기기' : '대원명 알아보기'}
+                </button>
+                ${open ? team.members.map(m => `<span class="member-chip ${m.role === '운전' ? 'driver' : ''}">${escapeHtml(m.name)}</span>`).join('') : ''}
             </div>
         `;
     }
