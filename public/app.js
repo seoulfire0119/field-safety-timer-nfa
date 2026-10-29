@@ -266,7 +266,9 @@ class FieldSafetyTimer {
         return center ? center.vehicles.find(v => v.name === vehicleName) || null : null;
     }
 
-    // 고른 차량·근무조의 탑승 대원 (운전요원 먼저)
+    // 고른 차량·근무조의 탑승 대원
+    // 편성표에는 직책이 따로 없으므로 진압대원 칸 맨 앞 사람을 대장(선착대장·진압대장)으로 본다.
+    // 진압대원이 없으면 운전요원이 대장이다.
     pickMembers() {
         const p = this.pick;
         const vehicle = this.findVehicle(p.center, p.vehicle);
@@ -276,9 +278,11 @@ class FieldSafetyTimer {
             return team && team.vehicle === p.vehicle && team.members ? team.members : [];
         }
         const list = [];
-        vehicle.driver[p.shift].forEach(name => list.push({ name, role: '운전' }));
         vehicle.crew[p.shift].forEach(name => list.push({ name, role: '진압' }));
-        return list.filter((m, i) => list.findIndex(x => x.name === m.name) === i);
+        vehicle.driver[p.shift].forEach(name => list.push({ name, role: '운전' }));
+        const members = list.filter((m, i) => list.findIndex(x => x.name === m.name) === i);
+        if (members.length) members[0] = { ...members[0], role: '대장' };
+        return members;
     }
 
     pickCenter(name) {
@@ -363,7 +367,7 @@ class FieldSafetyTimer {
                     <label class="member-check">
                         <input type="checkbox" data-member="${escapeHtml(m.name)}" ${p.checked.has(m.name) ? 'checked' : ''}>
                         <span>${escapeHtml(m.name)}</span>
-                        ${m.role === '운전' ? '<em>운전</em>' : ''}
+                        ${m.role === '대장' ? '<em class="leader">대장</em>' : m.role === '운전' ? '<em>운전</em>' : ''}
                     </label>
                 `).join('') : '<p class="roster-hint">편성표에 이 근무조 탑승 대원이 없습니다.</p>'}
             </div>
@@ -1053,7 +1057,9 @@ class FieldSafetyTimer {
                 <button type="button" class="btn-members ${open ? 'open' : ''}">
                     👥 ${team.members.length}명 진입 · ${open ? '대원명 숨기기' : '대원명 알아보기'}
                 </button>
-                ${open ? team.members.map(m => `<span class="member-chip ${m.role === '운전' ? 'driver' : ''}">${escapeHtml(m.name)}</span>`).join('') : ''}
+                ${open ? team.members.map(m => m.role === '대장'
+                    ? `<span class="member-chip leader">⭐ ${escapeHtml(m.name)}</span>`
+                    : `<span class="member-chip">${escapeHtml(m.name)}</span>`).join('') : ''}
             </div>
         `;
     }

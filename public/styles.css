@@ -1042,10 +1042,16 @@ body {
     font-style: normal;
     font-size: 0.75rem;
     font-weight: 700;
-    color: #1976d2;
-    background: #e3f2fd;
+    color: #666;
+    background: #eee;
     border-radius: 6px;
     padding: 2px 6px;
+}
+
+/* 대장(선착대장·진압대장) */
+.member-check em.leader {
+    color: #1976d2;
+    background: #e3f2fd;
 }
 
 /* 카드: 소속 센터와 진입 대원 */
@@ -1076,7 +1082,7 @@ body {
     padding: 3px 10px;
 }
 
-.member-chip.driver {
+.member-chip.leader {
     background: #e3f2fd;
     color: #0d47a1;
     font-weight: 700;
