@@ -1,0 +1,17 @@
+{
+  "name": "field-safety-timer-nfa",
+  "private": true,
+  "description": "현장 진입 타이머(소방청) — 테스트·화면 캡처용 (앱 자체는 public/ 정적 파일)",
+  "scripts": {
+    "test": "node --test tests/parse.test.js",
+    "test:e2e": "node --test tests/e2e.test.js",
+    "screenshots": "node tests/screenshots.js"
+  },
+  "devDependencies": {
+    "@xmldom/xmldom": "0.9.12",
+    "jszip": "3.10.1",
+    "pdfjs-dist": "3.11.174",
+    "puppeteer-core": "23.11.1",
+    "xlsx": "0.18.5"
+  }
+}

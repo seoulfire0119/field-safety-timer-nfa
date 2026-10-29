@@ -1,5 +1,4 @@
 // 소방관 현장 진입 타이머 앱
-console.log('🚨 앱 버전: 2024-12-28-v3 - 일시정지 기능 완료');
 class FieldSafetyTimer {
     constructor() {
         this.teams = [];
@@ -7,13 +6,18 @@ class FieldSafetyTimer {
             warningTime: 15, // 분
             dangerTime: 20,  // 분
             soundEnabled: true,
-            vibrationEnabled: true
+            vibrationEnabled: true,
+            voiceEnabled: true,  // 음성 안내
+            flashEnabled: true   // 경고·위험 시 화면 깜빡임
         };
         this.timers = new Map(); // 각 팀별 타이머 저장
         this.alarmIntervals = new Map(); // 각 팀별 알람 반복 인터벌 저장
         this.roster = null; // 불러온 출동대편성표
         this.pick = null;   // 편집 창에서 고른 센터/차량/대원
         this.openMembers = new Set(); // 대원명을 펼친 카드
+        this.logs = [];               // 활동 기록 (진입·일시정지·경고 등)
+        this.wakeLock = null;         // 화면 꺼짐 방지
+        this.lastSpoken = new Map();  // 팀별 마지막 음성 안내 시각
         this.init();
     }
 
@@ -33,6 +37,7 @@ class FieldSafetyTimer {
             const savedTeams = await loadData('teams', []);
             const savedSettings = await loadData('settings', this.settings);
             this.roster = await loadData('roster', null);
+            this.logs = await loadData('logs', []);
 
             this.teams = savedTeams;
             this.settings = { ...this.settings, ...savedSettings };
@@ -45,8 +50,7 @@ class FieldSafetyTimer {
                         name: `${i}착대`,
                         floor: null,
                         status: 'waiting', // waiting, active, warning, danger, paused
-                        entryTime: null,
-                        withdrawTime: null
+                        entryTime: null
                     });
                 }
                 this.saveTeams();
@@ -95,6 +99,23 @@ class FieldSafetyTimer {
 
         // 모달 관련 이벤트
         this.setupModalEvents();
+
+        // 활동 기록
+        document.getElementById('showLogBtn').addEventListener('click', () => this.showLogModal());
+        document.getElementById('closeLogModalBtn').addEventListener('click', () => this.closeModal('logModal'));
+        document.getElementById('exportLogBtn').addEventListener('click', () => this.exportLogs());
+        document.getElementById('clearLogBtn').addEventListener('click', () => {
+            this.showConfirmDialog('활동 기록을 모두 지우시겠습니까?', () => {
+                this.logs = [];
+                saveData('logs', this.logs);
+                this.renderLogs();
+            });
+        });
+
+        // 다른 앱에 갔다 돌아오면 화면 꺼짐 방지를 다시 건다
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') this.updateWakeLock();
+        });
 
         // 키보드 이벤트
         document.addEventListener('keydown', (e) => {
@@ -167,7 +188,7 @@ class FieldSafetyTimer {
         });
 
         // 설정 변경 이벤트
-        ['warningTime', 'dangerTime', 'soundEnabled', 'vibrationEnabled'].forEach(id => {
+        ['warningTime', 'dangerTime', 'soundEnabled', 'vibrationEnabled', 'voiceEnabled', 'flashEnabled'].forEach(id => {
             const element = document.getElementById(id);
             if (element) {
                 element.addEventListener('change', () => {
@@ -229,19 +250,53 @@ class FieldSafetyTimer {
     }
 
     // ---------------------------------------------------------- 출동대편성표
-    async importRoster(file) {
+    async importRoster(file, { sample = false } = {}) {
         this.showToast('편성표를 읽는 중입니다...', 'info');
+        let roster;
         try {
-            const roster = await Roster.parseRosterFile(file);
-            this.roster = roster;
-            saveData('roster', roster);
-            const vehicles = roster.centers.reduce((n, c) => n + c.vehicles.length, 0);
-            this.showToast(`${roster.centers.map(c => c.name).join(', ')} · 차량 ${vehicles}대를 불러왔습니다.`, 'success');
-            this.closeModal('rosterModal');
+            roster = await Roster.parseRosterFile(file);
         } catch (error) {
             console.error('편성표 읽기 실패:', error);
             this.showToast(error.message || '편성표를 읽지 못했습니다.', 'error');
+            return;
         }
+
+        // 더미데이터는 날짜 확인을 하지 않는다
+        if (sample || this.isRosterToday(roster)) {
+            this.applyRoster(roster);
+            return;
+        }
+        const cancel = () => this.showToast('편성표를 불러오지 않았습니다.', 'warning');
+        this.showConfirmDialog(
+            `편성표 날짜(${roster.date})가 오늘(${this.todayText()})과 다릅니다.\n그래도 이 편성표를 사용하시겠습니까?`,
+            () => this.showConfirmDialog(
+                '⚠️ 다른 날의 편성표를 쓰면 출동 대원이 실제와 다를 수 있습니다.\n정말 사용하시겠습니까?',
+                () => this.applyRoster(roster),
+                cancel
+            ),
+            cancel
+        );
+    }
+
+    applyRoster(roster) {
+        this.roster = roster;
+        saveData('roster', roster);
+        const vehicles = roster.centers.reduce((n, c) => n + c.vehicles.length, 0);
+        this.showToast(`${roster.centers.map(c => c.name).join(', ')} · 차량 ${vehicles}대를 불러왔습니다.`, 'success');
+        this.closeModal('rosterModal');
+    }
+
+    // 편성표에서 날짜를 못 찾으면 확인하지 않는다
+    isRosterToday(roster) {
+        const m = String(roster.date || '').match(/(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+        if (!m) return true;
+        const d = new Date();
+        return +m[1] === d.getFullYear() && +m[2] === d.getMonth() + 1 && +m[3] === d.getDate();
+    }
+
+    todayText() {
+        const d = new Date();
+        return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
     }
 
     // 더미데이터(가짜 이름) 편성표로 시작
@@ -250,7 +305,7 @@ class FieldSafetyTimer {
             const res = await fetch('samples/roster-sample.xlsx');
             if (!res.ok) throw new Error();
             const blob = await res.blob();
-            await this.importRoster(new File([blob], '출동대편성표(더미).xlsx'));
+            await this.importRoster(new File([blob], '출동대편성표(더미).xlsx'), { sample: true });
         } catch (error) {
             this.showToast('더미데이터를 불러오지 못했습니다.', 'error');
         }
@@ -269,8 +324,14 @@ class FieldSafetyTimer {
         this.showModal('rosterModal');
     }
 
-    // 09~18시는 주간, 나머지는 야간
+    // 편집 창의 주간/야간 기본값.
+    // 최근 12시간 안에 직접 고른 근무조가 있으면 그것(야간조가 일찍 출근한 경우 등),
+    // 없으면 시계 기준(09~18시 주간, 나머지 야간)
     currentShift() {
+        try {
+            const last = JSON.parse(localStorage.getItem('lastShift') || 'null');
+            if (last && Date.now() - last.at < 12 * 60 * 60 * 1000) return last.shift;
+        } catch (e) {}
         const h = new Date().getHours();
         return h >= 9 && h < 18 ? 'day' : 'night';
     }
@@ -341,6 +402,9 @@ class FieldSafetyTimer {
 
     pickShift(shift) {
         this.pick.shift = shift;
+        try {
+            localStorage.setItem('lastShift', JSON.stringify({ shift, at: Date.now() }));
+        } catch (e) {}
         this.pick.checked = new Set(this.pickMembers().map(m => m.name));
         this.resetLeader();
         this.renderRosterPicker();
@@ -417,7 +481,7 @@ class FieldSafetyTimer {
     // 팀 저장
     saveTeam() {
         const name = document.getElementById('teamName').value.trim();
-        const floor = parseInt(document.getElementById('assignedFloor').value) || null;
+        const floor = parseInt(document.getElementById('assignedFloor').value, 10) || null; // 지하는 음수
 
         // 편성표에서 고른 차량과 진입 대원
         const p = this.pick;
@@ -458,8 +522,7 @@ class FieldSafetyTimer {
                 floor: floor,
                 ...vehicleInfo,
                 status: 'waiting',
-                entryTime: null,
-                withdrawTime: null
+                entryTime: null
             };
             this.teams.push(newTeam);
         }
@@ -491,6 +554,9 @@ class FieldSafetyTimer {
         document.getElementById('dangerTime').value = this.settings.dangerTime;
         document.getElementById('soundEnabled').checked = this.settings.soundEnabled;
         document.getElementById('vibrationEnabled').checked = this.settings.vibrationEnabled;
+        document.getElementById('voiceEnabled').checked = this.settings.voiceEnabled;
+        document.getElementById('flashEnabled').checked = this.settings.flashEnabled;
+        document.getElementById('showLogBtn').textContent = `📝 활동 기록 보기 (${this.logs.length}건)`;
 
         this.showModal('settingsModal');
     }
@@ -501,8 +567,11 @@ class FieldSafetyTimer {
         this.settings.dangerTime = parseInt(document.getElementById('dangerTime').value) || 20;
         this.settings.soundEnabled = document.getElementById('soundEnabled').checked;
         this.settings.vibrationEnabled = document.getElementById('vibrationEnabled').checked;
+        this.settings.voiceEnabled = document.getElementById('voiceEnabled').checked;
+        this.settings.flashEnabled = document.getElementById('flashEnabled').checked;
 
         this.saveSettings();
+        this.updateAlertFlash();
     }
 
     // 진입 시작
@@ -512,9 +581,9 @@ class FieldSafetyTimer {
 
         team.status = 'active';
         team.entryTime = Date.now();
-        team.withdrawTime = null;
         team.pausedElapsed = null;
         team.pausedAt = null;
+        this.addLog(team, '진입 시작', 0);
 
         this.saveTeams();
         this.updateSingleTeamCard(team); // 해당 팀만 업데이트
@@ -537,8 +606,8 @@ class FieldSafetyTimer {
         team.pausedFromStatus = team.status;
         team.status = 'paused';
         team.pausedAt = Date.now();
+        this.addLog(team, '일시정지', team.pausedElapsed);
 
-        console.log(`일시정지: ${team.name}, 이전 상태: ${team.pausedFromStatus}, 경과시간: ${team.pausedElapsed}ms (${Math.floor(team.pausedElapsed / 60000)}:${Math.floor((team.pausedElapsed % 60000) / 1000)})`);
 
         // 알람 중지
         this.stopAlarm(teamId);
@@ -557,10 +626,8 @@ class FieldSafetyTimer {
         // 이전 경과 시간을 고려하여 새로운 entryTime 설정
         if (team.pausedElapsed) {
             team.entryTime = Date.now() - team.pausedElapsed;
-            console.log(`이어서 시작: ${team.name}, 저장된 경과시간: ${team.pausedElapsed}ms, 새로운 entryTime 설정`);
         } else {
             team.entryTime = Date.now();
-            console.log(`이어서 시작: ${team.name}, 경과시간 없음, 새로 시작`);
         }
 
         // 일시정지 전 상태로 복원하되, 시간에 따라 다시 계산
@@ -575,9 +642,9 @@ class FieldSafetyTimer {
 
         team.pausedAt = null;
         team.pausedFromStatus = null;
+        this.addLog(team, '이어서 시작', team.pausedElapsed || 0);
         // pausedElapsed는 유지 (다음 일시정지를 위해)
 
-        console.log(`이어서 시작: ${team.name}, 복원된 상태: ${team.status}`);
 
         this.saveTeams();
         this.updateSingleTeamCard(team); // 해당 팀만 업데이트
@@ -590,9 +657,12 @@ class FieldSafetyTimer {
         const team = this.teams.find(t => t.id === teamId);
         if (!team) return;
 
+        if (team.entryTime) {
+            const elapsed = team.status === 'paused' ? team.pausedElapsed : Date.now() - team.entryTime;
+            this.addLog(team, '초기화', elapsed);
+        }
         team.status = 'waiting';
         team.entryTime = null;
-        team.withdrawTime = null;
         team.pausedElapsed = null;
         team.pausedAt = null;
         team.pausedFromStatus = null;
@@ -608,33 +678,26 @@ class FieldSafetyTimer {
 
     // 전역 타이머 (1초마다 실행)
     startGlobalTimer() {
-        console.log('전역 타이머 시작');
         setInterval(() => {
-            console.log('타이머 업데이트 실행');
             this.updateTimers();
         }, 1000);
     }
 
     // 타이머 업데이트
     updateTimers() {
-        console.log('updateTimers 함수 실행');
         let needsRerender = false;
-        let activeTeamsCount = 0;
 
         // 각 팀을 독립적으로 처리
         for (let i = 0; i < this.teams.length; i++) {
             const team = this.teams[i];
-            console.log(`팀 ${team.name}: 상태=${team.status}, entryTime=${team.entryTime}, withdrawTime=${team.withdrawTime}`);
 
             // 현재 활성 상태인 팀만 처리 (일시정지가 아닌 상태)
             const isCurrentlyActive = team.entryTime &&
                 (team.status === 'active' || team.status === 'warning' || team.status === 'danger');
 
             if (isCurrentlyActive) {
-                activeTeamsCount++;
                 const elapsed = Date.now() - team.entryTime;
                 const elapsedMinutes = elapsed / (1000 * 60);
-                console.log(`팀 ${team.name}: 경과시간=${elapsedMinutes.toFixed(2)}분`);
 
                 const oldStatus = team.status;
 
@@ -647,9 +710,6 @@ class FieldSafetyTimer {
                     team.status = 'active';
                 }
 
-                if (oldStatus !== team.status) {
-                    console.log(`팀 ${team.name}: 상태 변경 ${oldStatus} -> ${team.status}`);
-                }
 
                 // 상태 변경시 알림
                 if (oldStatus !== team.status) {
@@ -672,7 +732,6 @@ class FieldSafetyTimer {
             }
         }
 
-        console.log(`활성 팀 수: ${activeTeamsCount}`);
 
         // 모든 active 팀의 UI 업데이트 (별도 루프로 분리)
         this.teams.forEach(team => {
@@ -680,11 +739,9 @@ class FieldSafetyTimer {
                 (team.status === 'active' || team.status === 'warning' || team.status === 'danger');
 
             if (isCurrentlyActive) {
-                console.log(`UI 업데이트: 팀 ${team.name}`);
                 this.updateTeamTimerDisplay(team);
             } else if (team.status === 'paused') {
                 // 일시정지된 팀도 UI 업데이트 (시간은 고정)
-                console.log(`일시정지 UI 업데이트: 팀 ${team.name}`);
                 this.updatePausedTeamDisplay(team);
             }
         });
@@ -692,20 +749,19 @@ class FieldSafetyTimer {
         if (needsRerender) {
             this.updateStatusOverview();
         }
+        this.updateAlertFlash();
     }
 
     // 팀별 타이머 디스플레이 업데이트
     updateTeamTimerDisplay(team) {
         const teamCard = document.querySelector(`[data-team-id="${team.id}"]`);
         if (!teamCard) {
-            console.log(`팀 카드를 찾을 수 없음: ${team.id}`);
             return;
         }
 
         const elapsed = Date.now() - team.entryTime;
         const minutes = Math.floor(elapsed / (1000 * 60));
         const seconds = Math.floor((elapsed % (1000 * 60)) / 1000);
-        console.log(`팀 ${team.name} 디스플레이 업데이트: ${minutes}:${seconds}`);
 
         const timerText = teamCard.querySelector('.timer-text');
         const progressRing = teamCard.querySelector('.progress-ring-progress');
@@ -713,11 +769,8 @@ class FieldSafetyTimer {
 
         if (timerText) {
             const newText = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-            console.log(`타이머 텍스트 업데이트: ${timerText.textContent} -> ${newText}`);
             timerText.textContent = newText;
             timerText.className = `timer-text status-${team.status}`;
-        } else {
-            console.log(`타이머 텍스트 요소를 찾을 수 없음`);
         }
 
         // 진행률 계산 (위험 시간 기준)
@@ -744,7 +797,6 @@ class FieldSafetyTimer {
     updatePausedTeamDisplay(team) {
         const teamCard = document.querySelector(`[data-team-id="${team.id}"]`);
         if (!teamCard) {
-            console.log(`팀 카드를 찾을 수 없음: ${team.id}`);
             return;
         }
 
@@ -790,7 +842,6 @@ class FieldSafetyTimer {
     updateSingleTeamCard(team) {
         const teamCard = document.querySelector(`[data-team-id="${team.id}"]`);
         if (!teamCard) {
-            console.log(`팀 카드를 찾을 수 없음: ${team.id}`);
             return;
         }
 
@@ -880,13 +931,25 @@ class FieldSafetyTimer {
 
     // 알림 트리거
     triggerAlert(team, alertType) {
+        const minutes = alertType === 'danger' ? this.settings.dangerTime : this.settings.warningTime;
         const messages = {
-            warning: `${team.name} - 15분 경과 (경고)`,
-            danger: `${team.name} - 20분 경과 (위험!)`
+            warning: `${team.name} - ${minutes}분 경과 (경고)`,
+            danger: `${team.name} - ${minutes}분 경과 (위험!)`
         };
 
         const message = messages[alertType];
         if (!message) return;
+
+        this.addLog(team, alertType === 'danger' ? '위험' : '경고', Date.now() - team.entryTime);
+
+        // 음성 안내 (소음 속에서도 알아듣도록)
+        this.speak(alertType === 'danger'
+            ? `위험. ${team.name}, ${minutes}분 경과. 즉시 확인하세요.`
+            : `경고. ${team.name}, ${minutes}분 경과.`);
+        this.lastSpoken.set(team.id, Date.now());
+
+        // 경고는 한 번 깜빡, 위험은 해제될 때까지 계속 깜빡 (updateAlertFlash)
+        if (alertType === 'warning') this.flashOnce();
 
         // 토스트 알림
         this.showToast(message, alertType === 'danger' ? 'error' : 'warning');
@@ -912,6 +975,138 @@ class FieldSafetyTimer {
         if (this.settings.soundEnabled) {
             this.playAlertSound(alertType);
         }
+    }
+
+    // 음성 안내
+    speak(text) {
+        if (!this.settings.voiceEnabled || !('speechSynthesis' in window)) return;
+        try {
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = 'ko-KR';
+            u.rate = 1;
+            u.volume = 1;
+            window.speechSynthesis.speak(u);
+        } catch (error) {
+            console.warn('음성 안내 실패:', error);
+        }
+    }
+
+    // 경고: 화면을 한 번 주황색으로 깜빡
+    flashOnce() {
+        if (!this.settings.flashEnabled) return;
+        document.body.classList.remove('flash-warning');
+        void document.body.offsetWidth; // 애니메이션 다시 시작
+        document.body.classList.add('flash-warning');
+        clearTimeout(this.flashTimer);
+        this.flashTimer = setTimeout(() => document.body.classList.remove('flash-warning'), 3000);
+    }
+
+    // 위험: 위험 상태인 대가 있으면 화면 전체를 빨갛게 깜빡이고 위쪽에 대 이름을 띄운다
+    updateAlertFlash() {
+        const danger = this.teams.filter(t => t.status === 'danger' && t.entryTime);
+        const banner = document.getElementById('alertFlashBanner');
+        document.body.classList.toggle('flash-danger', danger.length > 0 && this.settings.flashEnabled);
+        banner.hidden = danger.length === 0;
+        banner.textContent = danger.length
+            ? '⚠ 위험 · ' + danger.map(t => `${t.name} ${Math.floor((Date.now() - t.entryTime) / 60000)}분`).join(' · ')
+            : '';
+    }
+
+    // 진입 중인 대가 있으면 화면이 꺼지지 않게 한다 (꺼지면 알람이 늦거나 안 울릴 수 있음)
+    async updateWakeLock() {
+        if (!('wakeLock' in navigator)) return;
+        const need = this.teams.some(t => ['active', 'warning', 'danger'].includes(t.status));
+        try {
+            if (need && !this.wakeLock && document.visibilityState === 'visible') {
+                this.wakeLock = await navigator.wakeLock.request('screen');
+                this.wakeLock.addEventListener('release', () => { this.wakeLock = null; });
+            } else if (!need && this.wakeLock) {
+                await this.wakeLock.release();
+                this.wakeLock = null;
+            }
+        } catch (error) {
+            console.warn('화면 꺼짐 방지 실패:', error);
+        }
+    }
+
+    // ---------------------------------------------------------- 활동 기록
+    addLog(team, type, elapsed) {
+        this.logs.push({
+            at: Date.now(),
+            team: team.name,
+            center: team.center || '',
+            type,
+            elapsed: elapsed == null ? null : Math.max(0, elapsed),
+            members: (team.members || []).map(m => (m.role === '대장' ? '⭐' : '') + m.name).join(', ')
+        });
+        if (this.logs.length > 2000) this.logs = this.logs.slice(-2000);
+        saveData('logs', this.logs);
+        if (document.getElementById('logModal').classList.contains('show')) this.renderLogs();
+    }
+
+    showLogModal() {
+        this.renderLogs();
+        this.showModal('logModal');
+    }
+
+    renderLogs() {
+        const list = document.getElementById('logList');
+        if (!this.logs.length) {
+            list.innerHTML = '<p class="roster-hint">아직 기록이 없습니다. 진입 시작·일시정지·경고·위험·초기화가 자동으로 기록됩니다.</p>';
+            return;
+        }
+        list.innerHTML = [...this.logs].reverse().map(l => `
+            <div class="log-item log-${{ '진입 시작': 'start', '경고': 'warning', '위험': 'danger' }[l.type] || 'etc'}">
+                <span class="log-time">${this.timeText(l.at)}</span>
+                <span class="log-team">${escapeHtml(l.team)}</span>
+                <span class="log-type">${escapeHtml(l.type)}${l.elapsed != null ? ` · ${this.elapsedText(l.elapsed)}` : ''}</span>
+                ${l.members ? `<span class="log-members">${escapeHtml(l.members)}</span>` : ''}
+            </div>
+        `).join('');
+    }
+
+    // 엑셀에서 바로 열리는 CSV 로 내보낸다
+    exportLogs() {
+        if (!this.logs.length) {
+            this.showToast('내보낼 기록이 없습니다.', 'warning');
+            return;
+        }
+        const cell = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+        const rows = [['날짜', '시각', '출동대', '대명', '내용', '경과(분:초)', '진입 대원(⭐대장)']]
+            .concat(this.logs.map(l => {
+                const d = new Date(l.at);
+                return [
+                    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+                    this.timeText(l.at), l.center, l.team, l.type,
+                    l.elapsed != null ? this.elapsedText(l.elapsed) : '', l.members
+                ];
+            }));
+        const csv = '\ufeff' + rows.map(r => r.map(cell).join(',')).join('\r\n');
+        const d = new Date();
+        const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}_${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+        a.download = `현장진입기록_${stamp}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }
+
+    timeText(ms) {
+        const d = new Date(ms);
+        return [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2, '0')).join(':');
+    }
+
+    elapsedText(ms) {
+        const sec = Math.floor(ms / 1000);
+        return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`;
+    }
+
+    // 배정층: 지하는 음수로 저장 (-2 → 지하2층)
+    floorText(floor) {
+        if (!floor) return '배정층 없음';
+        return floor < 0 ? `지하${-floor}층` : `${floor}층`;
     }
 
     // 알림 소리 재생
@@ -946,7 +1141,6 @@ class FieldSafetyTimer {
         }
 
         const teamId = team.id;
-        console.log(`알람 시작: ${team.name} (${team.status})`);
 
         // 첫 번째 알람 즉시 실행
         if (this.settings.vibrationEnabled && 'vibrate' in navigator) {
@@ -961,12 +1155,10 @@ class FieldSafetyTimer {
             // 현재 팀 상태를 다시 확인
             const currentTeam = this.teams.find(t => t.id === teamId);
             if (!currentTeam || (currentTeam.status !== 'warning' && currentTeam.status !== 'danger')) {
-                console.log(`알람 중지: ${currentTeam ? currentTeam.name : 'Unknown'} (${currentTeam ? currentTeam.status : 'Not found'})`);
                 this.stopAlarm(teamId);
                 return;
             }
 
-            console.log(`알람 반복: ${currentTeam.name} (${currentTeam.status})`);
 
             // 진동
             if (this.settings.vibrationEnabled && 'vibrate' in navigator) {
@@ -978,6 +1170,13 @@ class FieldSafetyTimer {
             if (this.settings.soundEnabled) {
                 this.playAlertSound(currentTeam.status);
             }
+
+            // 위험 상태는 1분마다 음성으로 다시 알린다
+            if (currentTeam.status === 'danger' && Date.now() - (this.lastSpoken.get(teamId) || 0) >= 60000) {
+                const min = Math.floor((Date.now() - currentTeam.entryTime) / 60000);
+                this.speak(`위험. ${currentTeam.name}, ${min}분 경과.`);
+                this.lastSpoken.set(teamId, Date.now());
+            }
         }, 3000); // 3초마다 반복
 
         this.alarmIntervals.set(teamId, intervalId);
@@ -986,7 +1185,6 @@ class FieldSafetyTimer {
     // 알람 중지
     stopAlarm(teamId) {
         if (this.alarmIntervals.has(teamId)) {
-            console.log(`알람 완전 중지: ${teamId}`);
             clearInterval(this.alarmIntervals.get(teamId));
             this.alarmIntervals.delete(teamId);
         }
@@ -1066,7 +1264,7 @@ class FieldSafetyTimer {
                         <h3>${escapeHtml(team.name)}</h3>
                         <div class="team-floor">
                             <span>🏢</span>
-                            <span>${team.floor ? team.floor + '층' : '배정층 없음'}</span>
+                            <span>${this.floorText(team.floor)}</span>
                         </div>
                     </div>
                     <div class="team-actions">
@@ -1118,10 +1316,8 @@ class FieldSafetyTimer {
 
     // 팀 제어 버튼 렌더링
     renderTeamControls(team) {
-        console.log(`팀 ${team.name} 버튼 렌더링: 상태=${team.status}`);
 
         if (team.status === 'waiting') {
-            console.log(`팀 ${team.name}: 대기 상태 - 진입시작 버튼 표시`);
             return `
                 <button class="btn btn-primary btn-start">
                     ▶️ 진입 시작
@@ -1131,7 +1327,6 @@ class FieldSafetyTimer {
                 </button>
             `;
         } else if (team.status === 'paused') {
-            console.log(`팀 ${team.name}: 일시정지 상태 - 이어서 시작 버튼 표시`);
             return `
                 <button class="btn btn-primary btn-resume">
                     ▶️ 이어서 시작
@@ -1141,7 +1336,6 @@ class FieldSafetyTimer {
                 </button>
             `;
         } else {
-            console.log(`팀 ${team.name}: 활성 상태 (${team.status}) - 일시정지 버튼 표시`);
             return `
                 <button class="btn btn-warning btn-pause">
                     ⏸️ 일시정지
@@ -1173,6 +1367,9 @@ class FieldSafetyTimer {
         document.getElementById('statusActive').textContent = counts.active;
         document.getElementById('statusWarning').textContent = counts.warning;
         document.getElementById('statusDanger').textContent = counts.danger;
+
+        this.updateAlertFlash();
+        this.updateWakeLock();
     }
 
     // 모달 관련 메서드
@@ -1198,13 +1395,16 @@ class FieldSafetyTimer {
     }
 
     // 확인 다이얼로그
-    showConfirmDialog(message, callback) {
+    showConfirmDialog(message, callback, onNo) {
         document.getElementById('confirmMessage').textContent = message;
 
         const yesBtn = document.getElementById('confirmYes');
         yesBtn.onclick = () => {
-            callback();
             this.closeModal('confirmDialog');
+            callback();
+        };
+        document.getElementById('confirmNo').onclick = () => {
+            if (onNo) onNo();
         };
 
         this.showModal('confirmDialog');
@@ -1234,6 +1434,7 @@ class FieldSafetyTimer {
 
         this.teams = [];
         this.roster = null;
+        this.logs = [];
         this.timers.clear();
         clearAllData();
         this.render();

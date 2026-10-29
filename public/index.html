@@ -32,7 +32,7 @@
         <!-- 헤더 -->
         <header class="header">
             <div class="header-title">
-                <h1>🚒 현장 진입 타이머(1.0.1)</h1>
+                <h1>🚒 현장 진입 타이머</h1>
             </div>
             <div class="header-actions">
                 <button id="helpBtn" class="btn-help" title="사용방법 안내">📖 사용방법 안내</button>
@@ -147,6 +147,17 @@
                         <input type="checkbox" id="vibrationEnabled" checked>
                         <label for="vibrationEnabled">진동 알림</label>
                     </div>
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="voiceEnabled" checked>
+                        <label for="voiceEnabled">음성 안내 ("작전 펌프차, 15분 경과")</label>
+                    </div>
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="flashEnabled" checked>
+                        <label for="flashEnabled">화면 깜빡임 (경고 주황 · 위험 빨강)</label>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <button id="showLogBtn" class="btn btn-secondary">📝 활동 기록 보기</button>
                 </div>
                 <div class="setting-group">
                     <button id="clearDataBtn" class="btn btn-warning">모든 데이터 초기화</button>
@@ -189,13 +200,31 @@
                 </div>
                 <div class="form-group">
                     <label for="assignedFloor">배정층</label>
-                    <input type="text" id="assignedFloor" placeholder="예: 16층, -1층, 지하1층">
+                    <input type="number" id="assignedFloor" inputmode="numeric" step="1" placeholder="숫자만 입력 (예: 16)">
+                    <p class="form-hint">지하층은 앞에 - 를 붙여 주세요. 예) 지하 2층 → -2</p>
                 </div>
                 <div class="modal-actions">
                     <button id="saveTeamBtn" class="btn btn-primary">저장</button>
                     <button id="cancelTeamBtn" class="btn btn-secondary">취소</button>
                     <button id="deleteTeamBtn" class="btn btn-danger" style="display: none;">삭제</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 활동 기록 -->
+    <div id="logModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📝 활동 기록</h2>
+                <button id="closeLogModalBtn" class="btn-close">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="log-actions">
+                    <button id="exportLogBtn" class="btn btn-primary">📊 엑셀(CSV)로 내보내기</button>
+                    <button id="clearLogBtn" class="btn btn-secondary">기록 지우기</button>
+                </div>
+                <div id="logList" class="log-list"></div>
             </div>
         </div>
     </div>
@@ -214,6 +243,11 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- 경고·위험 화면 깜빡임 (누르는 것은 막지 않는다) -->
+    <div id="alertFlash" class="alert-flash" aria-live="assertive">
+        <div id="alertFlashBanner" class="alert-flash-banner" hidden></div>
     </div>
 
     <!-- 알림 토스트 -->

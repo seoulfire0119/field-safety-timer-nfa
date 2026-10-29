@@ -1,2 +1,7 @@
 .git
 *.md
+node_modules
+tests
+docs
+samples
+출동대편성표.png
