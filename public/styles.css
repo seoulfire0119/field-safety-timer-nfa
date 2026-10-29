@@ -1271,3 +1271,49 @@ body {
     25% { transform: translateX(-6px); }
     75% { transform: translateX(6px); }
 }
+
+/* 대원 목록: 체크 + 대장 지정 */
+.member-list {
+    grid-template-columns: 1fr;
+}
+
+.member-check {
+    cursor: default;
+}
+
+.member-check label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+}
+
+.member-check label em {
+    margin-left: 0;
+}
+
+.member-check.is-leader {
+    border-color: #90caf9;
+    background: #f3f9ff;
+}
+
+.member-check > em.leader {
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.btn-set-leader {
+    margin-left: auto;
+    flex-shrink: 0;
+    border: 1px solid #c5d3e3;
+    background: #fff;
+    color: #555;
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+    min-height: 32px;
+}

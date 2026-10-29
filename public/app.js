@@ -139,9 +139,14 @@ class FieldSafetyTimer {
         // 편성표에서 센터 → 차량 → 대원 고르기
         const picker = document.getElementById('rosterPicker');
         picker.addEventListener('click', (e) => {
-            const btn = e.target.closest('button[data-center], button[data-vehicle], button[data-shift], button[data-toggle-members]');
+            const btn = e.target.closest('button[data-center], button[data-vehicle], button[data-shift], button[data-toggle-members], button[data-leader]');
             if (!btn) return;
-            if (btn.dataset.toggleMembers !== undefined) {
+            if (btn.dataset.leader !== undefined) {
+                // 대장 바꾸기: 대장은 진입 대원이어야 하므로 체크도 함께
+                this.pick.leader = btn.dataset.leader;
+                this.pick.checked.add(btn.dataset.leader);
+                this.renderRosterPicker();
+            } else if (btn.dataset.toggleMembers !== undefined) {
                 this.pick.showMembers = !this.pick.showMembers;
                 this.renderRosterPicker();
             } else if (btn.dataset.center !== undefined) this.pickCenter(btn.dataset.center);
@@ -213,6 +218,7 @@ class FieldSafetyTimer {
             vehicle: team ? team.vehicle || null : null,
             shift: (team && team.shift) || this.currentShift(),
             checked: new Set(team && team.members ? team.members.map(m => m.name) : []),
+            leader: team && team.members ? (team.members.find(m => m.role === '대장') || {}).name || null : null,
             showMembers: false, // 대원명은 '대원명 알아보기'를 눌러야 보인다
             error: null         // 'center' | 'vehicle': 저장하려는데 고르지 않은 단계
         };
@@ -284,14 +290,28 @@ class FieldSafetyTimer {
         if (!vehicle) {
             // 편성표가 바뀌어 차량이 없으면 저장된 대원을 그대로 보여 준다
             const team = this.currentEditingTeam;
-            return team && team.vehicle === p.vehicle && team.members ? team.members : [];
+            const saved = team && team.vehicle === p.vehicle && team.members ? team.members : [];
+            return saved.map(m => (m.role === '대장' ? { ...m, role: m.baseRole || '진압' } : m));
         }
         const list = [];
         vehicle.crew[p.shift].forEach(name => list.push({ name, role: '진압' }));
         vehicle.driver[p.shift].forEach(name => list.push({ name, role: '운전' }));
-        const members = list.filter((m, i) => list.findIndex(x => x.name === m.name) === i);
-        if (members.length) members[0] = { ...members[0], role: '대장' };
-        return members;
+        return list.filter((m, i) => list.findIndex(x => x.name === m.name) === i);
+    }
+
+    // 처음 대장은 맨 앞 사람 (편집 창에서 '대장 지정'으로 바꿀 수 있다)
+    resetLeader() {
+        const first = this.pickMembers()[0];
+        this.pick.leader = first ? first.name : null;
+    }
+
+    // 저장할 진입 대원: 체크한 사람만, 대장을 맨 앞에
+    pickedMembers() {
+        const p = this.pick;
+        return this.pickMembers()
+            .filter(m => p.checked.has(m.name))
+            .map(m => (m.name === p.leader ? { name: m.name, role: '대장', baseRole: m.role } : m))
+            .sort((a, b) => (b.role === '대장') - (a.role === '대장'));
     }
 
     pickCenter(name) {
@@ -312,6 +332,7 @@ class FieldSafetyTimer {
             p.error = null;
             p.showMembers = false;
             p.checked = new Set(this.pickMembers().map(m => m.name));
+            this.resetLeader();
             const short = p.center.replace(/119안전센터$|안전센터$/, '').replace(/119구조대$/, '구조대');
             document.getElementById('teamName').value = `${short} ${name}`.trim();
         }
@@ -321,6 +342,7 @@ class FieldSafetyTimer {
     pickShift(shift) {
         this.pick.shift = shift;
         this.pick.checked = new Set(this.pickMembers().map(m => m.name));
+        this.resetLeader();
         this.renderRosterPicker();
     }
 
@@ -374,14 +396,19 @@ class FieldSafetyTimer {
         }
         membersEl.innerHTML = `
             ${toggle}
-            <p class="roster-hint">진입하는 대원을 체크하세요.</p>
+            <p class="roster-hint">진입하는 대원을 체크하세요. 대장이 다르면 <b>대장 지정</b>을 누르세요.</p>
             <div class="member-list">
                 ${members.length ? members.map(m => `
-                    <label class="member-check">
-                        <input type="checkbox" data-member="${escapeHtml(m.name)}" ${p.checked.has(m.name) ? 'checked' : ''}>
-                        <span>${escapeHtml(m.name)}</span>
-                        ${m.role === '대장' ? '<em class="leader">대장</em>' : m.role === '운전' ? '<em>운전</em>' : ''}
-                    </label>
+                    <div class="member-check ${m.name === p.leader ? 'is-leader' : ''}">
+                        <label>
+                            <input type="checkbox" data-member="${escapeHtml(m.name)}" ${p.checked.has(m.name) ? 'checked' : ''}>
+                            <span>${escapeHtml(m.name)}</span>
+                            ${m.role === '운전' ? '<em>운전</em>' : ''}
+                        </label>
+                        ${m.name === p.leader
+                            ? '<em class="leader">⭐ 대장</em>'
+                            : `<button type="button" class="btn-set-leader" data-leader="${escapeHtml(m.name)}">대장 지정</button>`}
+                    </div>
                 `).join('') : '<p class="roster-hint">편성표에 이 근무조 탑승 대원이 없습니다.</p>'}
             </div>
         `;
@@ -415,7 +442,7 @@ class FieldSafetyTimer {
             center: p.vehicle ? p.center : null,
             vehicle: p.vehicle || null,
             shift: p.vehicle ? p.shift : null,
-            members: p.vehicle ? this.pickMembers().filter(m => p.checked.has(m.name)) : []
+            members: p.vehicle ? this.pickedMembers() : []
         };
 
         if (this.currentEditingTeam) {
