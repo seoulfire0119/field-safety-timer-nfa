@@ -22,6 +22,9 @@ class FieldSafetyTimer {
         this.setupEventListeners();
         this.render();
         this.startGlobalTimer(); // 1초마다 모든 타이머 업데이트
+
+        // 편성표가 없으면 불러오기 전까지 쓸 수 없다
+        if (!this.roster) this.showRosterModal();
     }
 
     // 데이터 로드
@@ -80,7 +83,10 @@ class FieldSafetyTimer {
 
         // 출동대편성표 불러오기
         const rosterFile = document.getElementById('rosterFile');
-        document.getElementById('rosterBtn').addEventListener('click', () => rosterFile.click());
+        document.getElementById('rosterBtn').addEventListener('click', () => this.showRosterModal());
+        document.getElementById('rosterUploadBtn').addEventListener('click', () => rosterFile.click());
+        document.getElementById('rosterDummyBtn').addEventListener('click', () => this.loadSampleRoster());
+        document.getElementById('closeRosterModalBtn').addEventListener('click', () => this.closeModal('rosterModal'));
         rosterFile.addEventListener('change', () => {
             const file = rosterFile.files[0];
             rosterFile.value = '';
@@ -131,12 +137,6 @@ class FieldSafetyTimer {
         });
 
         // 편성표에서 센터 → 차량 → 대원 고르기
-        document.getElementById('rosterUploadInModal').addEventListener('click', () => {
-            document.getElementById('rosterFile').click();
-        });
-        document.getElementById('rosterSampleBtn').addEventListener('click', () => {
-            this.loadSampleRoster();
-        });
         const picker = document.getElementById('rosterPicker');
         picker.addEventListener('click', (e) => {
             const btn = e.target.closest('button[data-center], button[data-vehicle], button[data-shift], button[data-toggle-members]');
@@ -230,28 +230,36 @@ class FieldSafetyTimer {
             saveData('roster', roster);
             const vehicles = roster.centers.reduce((n, c) => n + c.vehicles.length, 0);
             this.showToast(`${roster.centers.map(c => c.name).join(', ')} · 차량 ${vehicles}대를 불러왔습니다.`, 'success');
-            if (document.getElementById('teamModal').classList.contains('show')) {
-                this.renderRosterPicker();
-            } else {
-                // 바로 차량을 고를 수 있게 대 추가 창을 연다
-                this.showTeamModal();
-            }
+            this.closeModal('rosterModal');
         } catch (error) {
             console.error('편성표 읽기 실패:', error);
             this.showToast(error.message || '편성표를 읽지 못했습니다.', 'error');
         }
     }
 
-    // 예시(가짜 이름) 편성표로 체험
+    // 더미데이터(가짜 이름) 편성표로 시작
     async loadSampleRoster() {
         try {
             const res = await fetch('samples/roster-sample.xlsx');
             if (!res.ok) throw new Error();
             const blob = await res.blob();
-            await this.importRoster(new File([blob], '출동대편성표(샘플).xlsx'));
+            await this.importRoster(new File([blob], '출동대편성표(더미).xlsx'));
         } catch (error) {
-            this.showToast('샘플 편성표를 불러오지 못했습니다.', 'error');
+            this.showToast('더미데이터를 불러오지 못했습니다.', 'error');
         }
+    }
+
+    // 편성표 불러오기 창: 편성표가 없으면 닫을 수 없다
+    showRosterModal() {
+        const r = this.roster;
+        const current = document.getElementById('rosterCurrent');
+        document.getElementById('closeRosterModalBtn').hidden = !r;
+        current.hidden = !r;
+        if (r) {
+            const vehicles = r.centers.reduce((n, c) => n + c.vehicles.length, 0);
+            current.textContent = `현재: ${r.fileName} · ${r.centers.length}개 출동대 · 차량 ${vehicles}대`;
+        }
+        this.showModal('rosterModal');
     }
 
     // 09~18시는 주간, 나머지는 야간
@@ -320,11 +328,9 @@ class FieldSafetyTimer {
         const centersEl = document.getElementById('rosterCenters');
         const vehiclesEl = document.getElementById('rosterVehicles');
         const membersEl = document.getElementById('rosterMembers');
-        document.getElementById('rosterUploadInModal').textContent = r ? '다시 불러오기' : '불러오기';
-        document.querySelector('#rosterPicker .roster-samples').hidden = !!r;
 
         if (!r) {
-            info.textContent = '편성표(엑셀·한글 hwpx·PDF)를 불러오면 안전센터 → 차량을 눌러 탑승 대원까지 넣을 수 있습니다.';
+            info.textContent = '편성표를 먼저 불러와 주세요. (상단 📋 버튼)';
             centersEl.innerHTML = vehiclesEl.innerHTML = membersEl.innerHTML = '';
             return;
         }
@@ -1131,6 +1137,7 @@ class FieldSafetyTimer {
     }
 
     closeModal(modalId) {
+        if (modalId === 'rosterModal' && !this.roster) return; // 편성표 없이는 닫지 않는다
         const modal = document.getElementById(modalId);
         modal.classList.remove('show');
         document.body.style.overflow = '';
@@ -1138,6 +1145,7 @@ class FieldSafetyTimer {
 
     closeAllModals() {
         document.querySelectorAll('.modal').forEach(modal => {
+            if (modal.id === 'rosterModal' && !this.roster) return;
             modal.classList.remove('show');
         });
         document.body.style.overflow = '';
@@ -1184,6 +1192,8 @@ class FieldSafetyTimer {
         clearAllData();
         this.render();
         this.showToast('모든 데이터가 초기화되었습니다.', 'success');
+        this.closeAllModals();
+        this.showRosterModal();
     }
 }
 

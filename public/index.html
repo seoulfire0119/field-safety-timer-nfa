@@ -94,6 +94,33 @@
         </details>
     </div>
 
+    <!-- 출동대편성표 불러오기 (처음 접속 시 필수) -->
+    <div id="rosterModal" class="modal roster-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📋 출동대편성표 불러오기</h2>
+                <button id="closeRosterModalBtn" class="btn-close" hidden>✕</button>
+            </div>
+            <div class="modal-body">
+                <p class="roster-modal-lead">
+                    현장 진입 타이머를 쓰려면 먼저 <b>오늘의 출동대편성표</b>를 불러와 주세요.<br>
+                    <span>엑셀(xlsx) · 한글(hwpx) · PDF</span>
+                </p>
+                <p id="rosterCurrent" class="roster-current" hidden></p>
+                <button type="button" id="rosterUploadBtn" class="btn btn-primary roster-modal-btn">📂 편성표 파일 올리기</button>
+                <button type="button" id="rosterDummyBtn" class="btn btn-secondary roster-modal-btn">🧪 더미데이터로 시작하기</button>
+                <div class="roster-dummy-download">
+                    <span>더미데이터 내려받기</span>
+                    <div>
+                        <a href="samples/roster-sample.xlsx" download="출동대편성표(더미).xlsx">📊 엑셀</a>
+                        <a href="samples/roster-sample.hwpx" download="출동대편성표(더미).hwpx">📄 한글</a>
+                        <a href="samples/roster-sample.pdf" download="출동대편성표(더미).pdf">📕 PDF</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 설정 모달 -->
     <div id="settingsModal" class="modal">
         <div class="modal-content">
@@ -140,17 +167,8 @@
                 <div id="rosterPicker" class="roster-picker">
                     <div class="roster-picker-head">
                         <span>📋 출동대편성표에서 선택</span>
-                        <button type="button" id="rosterUploadInModal" class="roster-upload-btn">불러오기</button>
                     </div>
                     <p id="rosterInfo" class="roster-info"></p>
-                    <div class="roster-samples">
-                        <button type="button" id="rosterSampleBtn" class="roster-sample-btn">🧪 샘플로 체험하기</button>
-                        <span>샘플 받기:
-                            <a href="samples/roster-sample.xlsx" download="출동대편성표(샘플).xlsx">엑셀</a> ·
-                            <a href="samples/roster-sample.hwpx" download="출동대편성표(샘플).hwpx">한글</a> ·
-                            <a href="samples/roster-sample.pdf" download="출동대편성표(샘플).pdf">PDF</a>
-                        </span>
-                    </div>
                     <div id="rosterCenters" class="chip-row"></div>
                     <div id="rosterVehicles" class="chip-row"></div>
                     <div id="rosterMembers"></div>

@@ -930,17 +930,6 @@ body {
     color: #333;
 }
 
-.roster-upload-btn {
-    border: none;
-    background: #1976d2;
-    color: #fff;
-    font-weight: 700;
-    font-size: 0.85rem;
-    border-radius: 999px;
-    padding: 6px 14px;
-    cursor: pointer;
-    white-space: nowrap;
-}
 
 .roster-info {
     font-size: 0.85rem;
@@ -1088,35 +1077,9 @@ body {
     font-weight: 700;
 }
 
-.roster-samples {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 10px;
-    font-size: 0.85rem;
-    color: #666;
-    margin-bottom: 10px;
-}
 
-.roster-samples a {
-    color: #1976d2;
-    font-weight: 700;
-}
 
-.roster-sample-btn {
-    border: 2px dashed #1976d2;
-    background: #fff;
-    color: #1976d2;
-    font-weight: 700;
-    font-size: 0.85rem;
-    border-radius: 999px;
-    padding: 6px 12px;
-    cursor: pointer;
-}
 
-.roster-samples[hidden] {
-    display: none;
-}
 
 /* 센터 버튼 옆 주간/야간 */
 .chip-row .shift-toggle {
@@ -1192,4 +1155,69 @@ body {
 /* 센터가 여러 줄이어도 주간/야간은 첫 줄 옆에 */
 #rosterCenters .shift-toggle {
     align-self: flex-start;
+}
+
+/* 출동대편성표 불러오기 창 (처음 접속 시) */
+.roster-modal .modal-content {
+    max-width: 440px;
+}
+
+.roster-modal-lead {
+    color: #444;
+    margin-bottom: 16px;
+    word-break: keep-all;
+}
+
+.roster-modal-lead span {
+    font-size: 0.9rem;
+    color: #888;
+}
+
+.roster-current {
+    font-size: 0.85rem;
+    color: #1976d2;
+    background: #e3f2fd;
+    border-radius: 10px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+}
+
+.roster-modal-btn {
+    width: 100%;
+    min-height: 56px;
+    font-size: 1.05rem;
+    margin-bottom: 10px;
+}
+
+.roster-dummy-download {
+    margin-top: 8px;
+    padding-top: 14px;
+    border-top: 1px dashed #ddd;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.roster-dummy-download div {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.roster-dummy-download a {
+    flex: 1;
+    text-align: center;
+    padding: 10px 0;
+    border: 2px solid #c5d3e3;
+    border-radius: 10px;
+    color: #1976d2;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.btn-close[hidden] {
+    display: none;
+}
+
+.roster-modal .modal-header h2 {
+    font-size: 1.3rem;
 }
