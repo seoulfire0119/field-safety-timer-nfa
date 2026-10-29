@@ -26,9 +26,8 @@ HEAD_FILL = 'DCE6F1'
 # 열 너비(px)
 COLS = [110, 94, 142, 123, 116, 208, 123, 105, 79, 116, 122, 101, 73, 80, 51, 66, 223]
 # 행 높이(px)
-ROWS = [70, 70, 68, 35, 69, 35, 34, 34, 35, 34, 24, 107, 69,
-        93, 69, 69, 69, 69, 69, 69, 69, 69, 69, 69, 69, 69,
-        168, 69, 69]
+# 차량 행과 하단 행 높이는 UNITS 를 읽으며 뒤에 붙인다
+ROWS = [70, 70, 68, 35, 69, 35, 34, 34, 35, 34, 24, 107, 69]
 
 
 def run(text, color=None):
@@ -66,7 +65,7 @@ LAYOUT = [
     (7, 7, 1, 2, '현장안전점검관', 'h'), (7, 9, 1, 3, '차 량 대 수', 'h'),
     (7, 12, 1, 3, '경 방', 'h'), (7, 15, 1, 2, '운 전', 'h'),
     (8, 1, 1, 2, '주 간', ''), (8, 3, 1, 1, '17명', ''), (8, 4, 1, 3, '센터장', ''),
-    (8, 7, 1, 2, '김가람', ''), (8, 9, 2, 3, '12대', ''),
+    (8, 7, 1, 2, '김가람', ''), (8, 9, 2, 3, '21대', ''),
     (8, 12, 1, 3, '10명', ''), (8, 15, 1, 2, '7명', ''),
     (9, 1, 1, 2, '야 간', ''), (9, 3, 1, 1, '17명', ''), (9, 4, 1, 3, '센터장', ''),
     (9, 7, 1, 2, '김가람', ''), (9, 12, 1, 3, '10명', ''), (9, 15, 1, 2, '7명', ''),
@@ -79,29 +78,11 @@ LAYOUT = [
     (12, 6, 1, 1, '운전요원6', 'h'), (12, 7, 1, 3, '진압대원\n비8', 'h'),
     (12, 10, 1, 1, '운전요원4', 'h'), (12, 11, 1, 4, '진압대원\n비7', 'h'),
 
-    (13, 0, 13, 1, '[작전]54\n주 : 3\n야 : 4\n당번 : 14\n비번 : 25\n사고 : 8', ''),
-    (13, 1, 13, 1, '센터장\n(당번)', ''),
-
-    # 사고내용 칸
-    (13, 15, 1, 2, '', 's'),
-    (14, 15, 5, 2, '연가:탁가비\n\n주간 연가: 박다솜\n\n주간 출장: 차소담', 'l'),
-    (19, 15, 1, 2, '', 's'),
-    (20, 15, 6, 2, '교육: 편나무(~10.30)\n        변다올,염라온(~10.29)\n\n병가: 석마리,선바람(~10.30)\n\n휴직: 설새길,길아영', 'l'),
-
-    # 하단
-    (26, 0, 1, 4, '사고내용', 'h'), (26, 4, 1, 3, '', ''), (26, 7, 1, 4, '', ''), (26, 11, 1, 4, '', ''),
-    (26, 15, 1, 2, [run('○ 당 번 자 현 황', BLUE)], 'h'),
-    (27, 0, 2, 3, '소내근무', 'h'), (27, 3, 1, 1, '시간', 'h'), (28, 3, 1, 1, '근무자', 'h'),
-    (27, 15, 2, 2, '', ''),
+    # 차량별 편성(센터별)과 하단은 아래 UNITS 에서 행 번호를 계산해 붙인다
 ]
 
-for i, t in enumerate(['09~12', '12~14', '14~16', '16~18', '18~20', '20~22',
-                       '22~00', '00~02', '02~04', '04~06', '06~09']):
-    LAYOUT.append((27, 4 + i, 1, 1, t, ''))
-    LAYOUT.append((28, 4 + i, 1, 1, '', ''))
-
 # 차량별 편성: 차량, 3팀 운전, 3팀 진압, 1팀 운전, 1팀 진압, 2팀 운전, 2팀 진압
-VEHICLES = [
+JAKJEON = [
     ('펌프차\n(질식덮개,\n관통관창,\n상방관창)', '홍길동',
      '주)센터장(안전),김가람(R),이나래\n야)센터장(안전),김가람(R),박다솜(R),이나래',
      '최라온', '정마루(안전), 강바다, 조사랑', '윤아름', '장자람(안전), 임찬솔, 한카라'),
@@ -122,14 +103,69 @@ VEHICLES = [
     ('전기차 화재진압\n트레일러', '(고새봄)', '(문아라)', '(양자두)', '(손차돌)', '()', '()'),
 ]
 
-for i, (veh, d3, c3, d1, c1, d2, c2) in enumerate(VEHICLES):
-    r = 13 + i
-    LAYOUT += [
-        (r, 2, 1, 1, veh, ''),
-        (r, 3, 1, 1, d3, ''), (r, 4, 1, 2, c3, 'l'),
-        (r, 6, 1, 1, d1, ''), (r, 7, 1, 3, c1, 'l'),
-        (r, 10, 1, 1, d2, ''), (r, 11, 1, 4, c2, 'l'),
-    ]
+GYESAN = [
+    ('펌프차', '도하늘', '센터장(안전),유초록,예다슬',
+     '맹고운', '연바로, 제나비', '인솔빛', '감다미, 경단비'),
+    ('물탱크차', '모해솔', '(예다슬)', '(맹고운)', '', '국보람', ''),
+    ('구급차', '빈새롬', '피아솔, 어라온', '기하율', '편초롱', '반디울', '시나래'),
+]
+
+JANGGI = [
+    ('펌프차', '추동해', '센터장(안전),왕가람,함새별',
+     '판도윤', '음하진, 동주안', '경은솔', '여해든, 부시온'),
+    ('물탱크차', '옥다님', '(함새별)', '(판도윤)', '', '(경은솔)', ''),
+    ('구급차', '은가비', '도란솔, 견아리', '상아름', '계나린', '초여름', '빙소리'),
+]
+
+RESCUE = [
+    ('구조버스', '강한별', '구조대장(안전),서기찬,윤바위,송도윤',
+     '오한결', '한누리, 배도담, 안시우', '권태산', '임해솔, 조하람, 문채윤'),
+    ('구조공작차', '(강한별)', '(송도윤)', '(오한결)', '', '(권태산)', ''),
+]
+
+# (안전센터 칸, 센터장 칸, 차량들, 사고내용 칸 [(시작, 행수, 글자, 스타일)], 행 높이)
+UNITS = [
+    ('[작전]54\n주 : 3\n야 : 4\n당번 : 14\n비번 : 25\n사고 : 8', '센터장\n(당번)', JAKJEON,
+     [(0, 1, '', 's'),
+      (1, 5, '연가:탁가비\n\n주간 연가: 박다솜\n\n주간 출장: 차소담', 'l'),
+      (6, 1, '', 's'),
+      (7, 6, '교육: 편나무(~10.30)\n        변다올,염라온(~10.29)\n\n병가: 석마리,선바람(~10.30)\n\n휴직: 설새길,길아영', 'l')],
+     [80] + [52] * 12),
+    ('[계산]18\n주 : 1\n야 : 1', '센터장\n(당번)', GYESAN, [(0, 3, '연가: 하늘빛', 'l')], [40] * 3),
+    ('[장기]18\n주 : 1\n야 : 1', '센터장\n(당번)', JANGGI, [(0, 3, '', '')], [40] * 3),
+    ('계양119구조대\n주 : 2\n야 : 2', '구조대장\n(당번)', RESCUE, [(0, 2, '교육: 누리솔(~10.31)', 'l')], [40] * 2),
+]
+
+r = 13
+for center, chief, vehicles, notes, heights in UNITS:
+    n = len(vehicles)
+    LAYOUT += [(r, 0, n, 1, center, ''), (r, 1, n, 1, chief, '')]
+    for off, rs, text, style in notes:
+        LAYOUT.append((r + off, 15, rs, 2, text, style))
+    for i, (veh, d3, c3, d1, c1, d2, c2) in enumerate(vehicles):
+        LAYOUT += [
+            (r + i, 2, 1, 1, veh, ''),
+            (r + i, 3, 1, 1, d3, ''), (r + i, 4, 1, 2, c3, 'l'),
+            (r + i, 6, 1, 1, d1, ''), (r + i, 7, 1, 3, c1, 'l'),
+            (r + i, 10, 1, 1, d2, ''), (r + i, 11, 1, 4, c2, 'l'),
+        ]
+    ROWS += heights
+    r += n
+
+# 하단: 사고내용, 소내근무
+B = r
+LAYOUT += [
+    (B, 0, 1, 4, '사고내용', 'h'), (B, 4, 1, 3, '', ''), (B, 7, 1, 4, '', ''), (B, 11, 1, 4, '', ''),
+    (B, 15, 1, 2, [run('○ 당 번 자 현 황', BLUE)], 'h'),
+    (B + 1, 0, 2, 3, '소내근무', 'h'), (B + 1, 3, 1, 1, '시간', 'h'), (B + 2, 3, 1, 1, '근무자', 'h'),
+    (B + 1, 15, 2, 2, '', ''),
+]
+for i, t in enumerate(['09~12', '12~14', '14~16', '16~18', '18~20', '20~22',
+                       '22~00', '00~02', '02~04', '04~06', '06~09']):
+    LAYOUT.append((B + 1, 4 + i, 1, 1, t, ''))
+    LAYOUT.append((B + 2, 4 + i, 1, 1, '', ''))
+ROWS += [40, 30, 30]
+LAST_ROW = B + 2
 
 NO_BORDER = {'banner', 'title', 'org', 'date'}
 
@@ -198,7 +234,7 @@ def html_text(parts):
     return ''.join(out)
 
 
-def build_html(path, scale=0.37):
+def build_html(path, scale=0.385):
     # 한 쪽(A4 세로)에 들어가도록 줄인다
     def px(v):
         return max(1, round(v * scale))
@@ -210,9 +246,9 @@ def build_html(path, scale=0.37):
     body = []
     for r, c, rs, cs, content, style in title_rows:
         if style == 'banner':
-            body.append(f'<p style="text-align:center;{font}font-size:16pt;font-weight:bold;margin:0">{html_text(runs_of(content))}</p>')
+            body.append(f'<p style="text-align:center;{font}font-size:14pt;font-weight:bold;margin:0">{html_text(runs_of(content))}</p>')
         elif style == 'title':
-            body.append(f'<p style="text-align:center;{font}font-size:20pt;font-weight:bold;margin:0">{html_text(runs_of(content))}</p>')
+            body.append(f'<p style="text-align:center;{font}font-size:17pt;font-weight:bold;margin:0">{html_text(runs_of(content))}</p>')
     org = next(x for x in title_rows if x[5] == 'org')[4]
     date = next(x for x in title_rows if x[5] == 'date')[4]
     body.append(
@@ -222,7 +258,7 @@ def build_html(path, scale=0.37):
         '</tr></table>')
 
     # 두 개의 표: 인원현황(3~9행), 차량별 편성(11~28행)
-    for lo, hi in ((3, 9), (11, 28)):
+    for lo, hi in ((3, 9), (11, LAST_ROW)):
         cells = sorted((x for x in table_cells if lo <= x[0] <= hi), key=lambda x: (x[0], x[1]))
         rows = []
         for r in range(lo, hi + 1):
@@ -235,11 +271,12 @@ def build_html(path, scale=0.37):
                 w = px(sum(COLS[c:c + cs]))
                 tds.append(
                     f'<td rowspan="{rs}" colspan="{cs}" width="{w}" style="width:{w}px;border:1px solid #000;{bg}text-align:{align};'
-                    f'vertical-align:middle;{font}font-size:6.5pt;line-height:105%;letter-spacing:-0.05em;padding:0">{html_text(runs_of(content)) or "&nbsp;"}</td>')
-            rows.append(f'<tr style="height:{px(ROWS[r])}px">{"".join(tds)}</tr>')
+                    f'vertical-align:middle;{font}font-size:5.5pt;line-height:100%;letter-spacing:-0.05em;padding:0">{html_text(runs_of(content)) or "&nbsp;"}</td>')
+            rows.append(f'<tr style="height:{px(ROWS[r] * 0.75)}px">{"".join(tds)}</tr>')
         cols = ''.join(f'<col style="width:{px(w)}px">' for w in COLS)
         body.append(f'<table width="{px(sum(COLS))}" style="border-collapse:collapse;width:{px(sum(COLS))}px"><colgroup>{cols}</colgroup>{"".join(rows)}</table>')
-        body.append('<p style="margin:0;font-size:4pt">&nbsp;</p>')
+        if hi != LAST_ROW:
+            body.append('<p style="margin:0;font-size:3pt">&nbsp;</p>')
 
     with open(path, 'w', encoding='utf-8') as f:
         f.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>출동대편성표</title></head><body>'
@@ -267,9 +304,9 @@ def build_hwp(html_path, hwpx_path, pdf_path):
         sec.SetItem('PaperHeight', hwp.MiliToHwpUnit(297))
         sec.SetItem('Landscape', 0)
         for k in ('LeftMargin', 'RightMargin'):
-            sec.SetItem(k, hwp.MiliToHwpUnit(8))
+            sec.SetItem(k, hwp.MiliToHwpUnit(6))
         for k in ('TopMargin', 'BottomMargin'):
-            sec.SetItem(k, hwp.MiliToHwpUnit(8))
+            sec.SetItem(k, hwp.MiliToHwpUnit(6))
         for k in ('HeaderLen', 'FooterLen', 'GutterLen'):
             sec.SetItem(k, 0)
         act.Execute(pset)

@@ -1182,3 +1182,8 @@ body {
         font-size: 1rem;
     }
 }
+
+/* 센터가 여러 줄이어도 주간/야간은 첫 줄 옆에 */
+#rosterCenters .shift-toggle {
+    align-self: flex-start;
+}

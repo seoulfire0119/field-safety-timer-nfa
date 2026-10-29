@@ -297,7 +297,7 @@ class FieldSafetyTimer {
             p.vehicle = name;
             p.showMembers = false;
             p.checked = new Set(this.pickMembers().map(m => m.name));
-            const short = p.center.replace(/119안전센터$|안전센터$/, '');
+            const short = p.center.replace(/119안전센터$|안전센터$/, '').replace(/119구조대$/, '구조대');
             document.getElementById('teamName').value = `${short} ${name}`.trim();
         }
         this.renderRosterPicker();
