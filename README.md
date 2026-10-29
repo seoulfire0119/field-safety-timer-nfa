@@ -9,7 +9,7 @@
 docker compose up -d --build
 ```
 
-브라우저에서 http://localhost:8081 접속.
+브라우저에서 http://localhost:8080 접속.
 
 중지: `docker compose down`
 
@@ -17,7 +17,7 @@ docker compose up -d --build
 
 - `public/` — 앱 파일 (index.html, app.js, intro.js, storage.js, styles.css, sw.js …)
 - `Dockerfile`, `nginx.conf` — nginx 로 `public/` 을 서비스
-- `docker-compose.yml` — 8081 포트로 실행
+- `docker-compose.yml` — 8080 포트로 실행
 
 ## 이전 버전과 달라진 점
 
