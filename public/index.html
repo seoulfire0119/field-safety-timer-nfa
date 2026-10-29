@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#c62828">
+    <title>소방관 현장 진입 타이머</title>
+
+    <!-- PWA 매니페스트 -->
+    <link rel="manifest" href="manifest.json">
+
+    <!-- 아이콘 -->
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link rel="apple-touch-icon" href="icon-192x192.png">
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="styles.css">
+
+  <!-- 공유 미리보기 (카카오톡 등) — 이미지는 네임카드 '설명보기' 썸네일 -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://field-safety-timer-119.web.app/">
+  <meta property="og:title" content="현장 진입 타이머">
+  <meta property="og:description" content="대별 진입시간을 실시간으로 재서 대기·진입중·경고·위험을 한눈에 보여 주는 소방관 현장 안전 타이머">
+  <meta property="og:image" content="https://field-safety-timer-119.web.app/og-image.jpg">
+  <meta property="og:image:width" content="1000">
+  <meta property="og:image:height" content="750">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="description" content="대별 진입시간을 실시간으로 재서 대기·진입중·경고·위험을 한눈에 보여 주는 소방관 현장 안전 타이머">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 헤더 -->
+        <header class="header">
+            <div class="header-title">
+                <h1>🚒 현장 진입 타이머(1.0.1)</h1>
+            </div>
+            <div class="header-actions">
+                <button id="helpBtn" class="btn-help" title="사용방법 안내">📖 사용방법 안내</button>
+                <button id="settingsBtn" class="btn-icon">⚙️</button>
+                <button id="addTeamBtn" class="btn-icon">➕</button>
+            </div>
+        </header>
+
+        <!-- 전체 상황판 -->
+        <div class="status-overview">
+            <div class="status-card">
+                <span class="status-label">대기</span>
+                <span id="statusWaiting" class="status-count">0</span>
+            </div>
+            <div class="status-card">
+                <span class="status-label">진입중</span>
+                <span id="statusActive" class="status-count">0</span>
+            </div>
+            <div class="status-card warning">
+                <span class="status-label">경고</span>
+                <span id="statusWarning" class="status-count">0</span>
+            </div>
+            <div class="status-card danger">
+                <span class="status-label">위험</span>
+                <span id="statusDanger" class="status-count">0</span>
+            </div>
+        </div>
+
+        <!-- 대 목록 -->
+        <div id="teamsList" class="teams-list">
+            <!-- 팀 카드들이 동적으로 생성됩니다 -->
+        </div>
+
+        <!-- 빈 상태 메시지 -->
+        <div id="emptyState" class="empty-state">
+            <p>등록된 대가 없습니다.</p>
+            <button id="addFirstTeamBtn" class="btn btn-primary">첫 번째 대 추가</button>
+        </div>
+
+        <!-- 앱 소개 (접기/펼치기) -->
+        <details id="aboutSection" class="about-section">
+            <summary>
+                <span>🚒 현장 진입 타이머를 만든 이유</span>
+                <span class="about-toggle"></span>
+            </summary>
+            <div class="about-body">
+                <ul class="about-list">
+                    <li>화재진압 시 <b>공기통 이용시간은 20~30분</b>입니다.</li>
+                    <li>하지만 재난현장의 <b>소음</b>으로 인해 알림음과 경고등이 잘 식별되지 않습니다.</li>
+                    <li>지휘관 입장에서는 대원들이 <b>얼마나 활동했는지</b> 측정·파악이 어렵습니다.</li>
+                    <li>현장 진입 타이머로 각 대별 활동사항을 파악하고 진입시간을 측정하여 <b>안전하게 현장활동</b>을 하도록 돕는 앱입니다.</li>
+                </ul>
+                <img src="image/intro-1.jpg" alt="화재현장에서 현장지휘관이 태블릿으로 현장 진입 타이머를 확인하는 모습" loading="lazy">
+            </div>
+        </details>
+    </div>
+
+    <!-- 설정 모달 -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>설정</h2>
+                <button id="closeSettingsBtn" class="btn-close">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="setting-group">
+                    <label>경고 시간 (분)</label>
+                    <input type="number" id="warningTime" value="15" min="1" max="30">
+                </div>
+                <div class="setting-group">
+                    <label>위험 시간 (분)</label>
+                    <input type="number" id="dangerTime" value="20" min="1" max="60">
+                </div>
+                <div class="setting-group">
+                    <label>알림 활성화</label>
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="soundEnabled" checked>
+                        <label for="soundEnabled">소리 알림</label>
+                    </div>
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="vibrationEnabled" checked>
+                        <label for="vibrationEnabled">진동 알림</label>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <button id="clearDataBtn" class="btn btn-warning">모든 데이터 초기화</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 대 추가/편집 모달 -->
+    <div id="teamModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="teamModalTitle">대 추가</h2>
+                <button id="closeTeamModalBtn" class="btn-close">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="teamName">대명</label>
+                    <input type="text" id="teamName" placeholder="예: 성산대, 1착대">
+                </div>
+                <div class="form-group">
+                    <label for="assignedFloor">배정층</label>
+                    <input type="text" id="assignedFloor" placeholder="예: 16층, -1층, 지하1층">
+                </div>
+                <div class="modal-actions">
+                    <button id="saveTeamBtn" class="btn btn-primary">저장</button>
+                    <button id="cancelTeamBtn" class="btn btn-secondary">취소</button>
+                    <button id="deleteTeamBtn" class="btn btn-danger" style="display: none;">삭제</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 확인 다이얼로그 -->
+    <div id="confirmDialog" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>확인</h2>
+            </div>
+            <div class="modal-body">
+                <p id="confirmMessage">정말로 실행하시겠습니까?</p>
+                <div class="modal-actions">
+                    <button id="confirmYes" class="btn btn-primary">예</button>
+                    <button id="confirmNo" class="btn btn-secondary">아니오</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 알림 토스트 -->
+    <div id="toast" class="toast">
+        <div id="toastMessage"></div>
+    </div>
+
+    <script src="storage.js"></script>
+    <script src="app.js"></script>
+    <script src="intro.js"></script>
+    <script>
+        // 서비스 워커 등록
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then((registration) => {
+                        console.log('SW registered: ', registration);
+                    })
+                    .catch((registrationError) => {
+                        console.log('SW registration failed: ', registrationError);
+                    });
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+name: field-safety-timer-nfa
+
+services:
+  timer:
+    build: .
+    image: field-safety-timer-nfa
+    container_name: field-safety-timer-nfa
+    ports:
+      - "8081:80"
+    restart: unless-stopped
