@@ -24,6 +24,7 @@ const OUT = path.join(__dirname, '..', 'docs', 'screenshots');
     await click(page, '[data-toggle-members]');
     await sleep(400);
     await shot(page, '02-pick-vehicle.png', await page.$('#rosterPicker'));
+    await page.type('#assignedFloor', '5');
     await click(page, '#saveTeamBtn');
 
     // 진입 중인 차량 여러 대

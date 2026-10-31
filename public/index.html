@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#c62828">
-    <title>소방관 현장 진입 타이머</title>
+    <meta name="theme-color" content="#1f2326">
+    <title>현장 진입 타이머</title>
+    <link rel="preload" href="fonts/barlow-condensed-600.woff2" as="font" type="font/woff2" crossorigin>
 
     <!-- PWA 매니페스트 -->
     <link rel="manifest" href="manifest.json">
@@ -32,37 +33,67 @@
         <!-- 헤더 -->
         <header class="header">
             <div class="header-title">
-                <h1>🚒 현장 진입 타이머</h1>
+                <svg class="header-mark" viewBox="0 0 40 40" aria-hidden="true">
+                    <circle cx="20" cy="20" r="18" fill="#f3f1ea" stroke="#0d0f11" stroke-width="2"/>
+                    <path d="M8.7 31.3A16 16 0 0 1 9 8.7" fill="none" stroke="#2f8f5b" stroke-width="4"/>
+                    <path d="M9 8.7A16 16 0 0 1 31 8.7" fill="none" stroke="#e3a312" stroke-width="4"/>
+                    <path d="M31 8.7A16 16 0 0 1 31.3 31.3" fill="none" stroke="#d42a20" stroke-width="4"/>
+                    <path d="M20 20L28 10" stroke="#d42a20" stroke-width="2.6" stroke-linecap="round"/>
+                    <circle cx="20" cy="20" r="3" fill="#0d0f11"/>
+                </svg>
+                <h1>현장 진입 타이머</h1>
             </div>
             <div class="header-actions">
-                <button id="helpBtn" class="btn-help" title="사용방법 안내">📖 사용방법 안내</button>
-                <button id="rosterBtn" class="btn-icon" title="출동대편성표 불러오기">📋</button>
-                <button id="settingsBtn" class="btn-icon">⚙️</button>
-                <button id="addTeamBtn" class="btn-icon">➕</button>
+                <button id="helpBtn" class="btn-help" title="사용방법 안내">사용방법</button>
+                <button id="rosterBtn" class="btn-icon" title="출동대편성표 불러오기" aria-label="출동대편성표 불러오기">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v3H8zM6 5.5H4.5V21h15V5.5H18M8 11h8M8 15h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+                    <span>편성표</span>
+                </button>
+                <button id="settingsBtn" class="btn-icon" title="설정" aria-label="설정">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                    <span>설정</span>
+                </button>
+                <button id="addTeamBtn" class="btn-icon btn-add" title="대 추가" aria-label="대 추가">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.5v15M4.5 12h15" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+                    <span>대 추가</span>
+                </button>
             </div>
         </header>
 
         <!-- 출동대편성표 파일 선택 (📋 버튼으로 연다) -->
         <input type="file" id="rosterFile" accept=".xlsx,.xls,.hwpx,.hwp,.pdf" hidden>
 
-        <!-- 전체 상황판 -->
-        <div class="status-overview">
-            <div class="status-card">
+        <!-- 전체 상황판: 누르면 그 상태인 대만 보인다 -->
+        <div class="status-overview" id="statusOverview">
+            <button type="button" class="status-card" data-filter="waiting" aria-pressed="false">
                 <span class="status-label">대기</span>
                 <span id="statusWaiting" class="status-count">0</span>
-            </div>
-            <div class="status-card">
+            </button>
+            <button type="button" class="status-card" data-filter="active" aria-pressed="false">
                 <span class="status-label">진입중</span>
                 <span id="statusActive" class="status-count">0</span>
-            </div>
-            <div class="status-card warning">
+            </button>
+            <button type="button" class="status-card paused" data-filter="paused" aria-pressed="false">
+                <span class="status-label">일시정지</span>
+                <span id="statusPaused" class="status-count">0</span>
+            </button>
+            <button type="button" class="status-card warning" data-filter="warning" aria-pressed="false">
                 <span class="status-label">경고</span>
                 <span id="statusWarning" class="status-count">0</span>
-            </div>
-            <div class="status-card danger">
+            </button>
+            <button type="button" class="status-card danger" data-filter="danger" aria-pressed="false">
                 <span class="status-label">위험</span>
                 <span id="statusDanger" class="status-count">0</span>
-            </div>
+            </button>
+        </div>
+
+        <!-- 거르기 중 표시 + 현황 보고 -->
+        <div class="board-bar">
+            <div id="filterInfo" class="filter-info" hidden></div>
+            <button type="button" id="reportBtn" class="btn-report">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 10h16M4 15h10M4 20h7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+                현황 보고
+            </button>
         </div>
 
         <!-- 대 목록 -->
@@ -79,7 +110,7 @@
         <!-- 앱 소개 (접기/펼치기) -->
         <details id="aboutSection" class="about-section">
             <summary>
-                <span>🚒 현장 진입 타이머를 만든 이유</span>
+                <span>현장 진입 타이머를 만든 이유</span>
                 <span class="about-toggle"></span>
             </summary>
             <div class="about-body">
@@ -97,24 +128,39 @@
     <!-- 출동대편성표 불러오기 (처음 접속 시 필수) -->
     <div id="rosterModal" class="modal roster-modal">
         <div class="modal-content">
+            <div class="roster-intro">
+                <div id="rosterHero" class="roster-hero from-active"></div>
+                <div class="roster-intro-text">
+                    <div class="roster-intro-eyebrow">현장 진입 타이머</div>
+                    <p class="roster-intro-title">진입한 대원의 활동시간을<br>압력계처럼 한눈에</p>
+                    <p class="roster-intro-sub">바늘이 <b class="c-warn">노랑</b>에 들어가면 경고, <b class="c-danger">빨강</b>이면 위험입니다.</p>
+                </div>
+                <button id="closeRosterModalBtn" class="btn-close" hidden aria-label="닫기">✕</button>
+            </div>
             <div class="modal-header">
-                <h2>📋 출동대편성표 불러오기</h2>
-                <button id="closeRosterModalBtn" class="btn-close" hidden>✕</button>
+                <h2>출동대편성표 불러오기</h2>
             </div>
             <div class="modal-body">
                 <p class="roster-modal-lead">
-                    현장 진입 타이머를 쓰려면 먼저 <b>오늘의 출동대편성표</b>를 불러와 주세요.<br>
-                    <span>엑셀(xlsx) · 한글(hwpx) · PDF</span>
+                    먼저 <b>오늘의 출동대편성표</b>를 불러와 주세요.
                 </p>
-                <p id="rosterCurrent" class="roster-current" hidden></p>
-                <button type="button" id="rosterUploadBtn" class="btn btn-primary roster-modal-btn">📂 편성표 파일 올리기</button>
-                <button type="button" id="rosterDummyBtn" class="btn btn-secondary roster-modal-btn">🧪 더미데이터로 시작하기</button>
+                <ul id="rosterList" class="roster-list" hidden></ul>
+                <button type="button" id="rosterUploadBtn" class="btn btn-primary roster-modal-btn">편성표 파일 올리기</button>
+                <button type="button" id="rosterDummyBtn" class="btn btn-secondary roster-modal-btn">더미데이터로 시작하기</button>
                 <div class="roster-dummy-download">
-                    <span>더미데이터 내려받기</span>
+                    <span>더미데이터 내려받기 (계양소방서)</span>
                     <div>
                         <a href="samples/roster-sample.xlsx" download="출동대편성표(더미).xlsx">📊 엑셀</a>
                         <a href="samples/roster-sample.hwpx" download="출동대편성표(더미).hwpx">📄 한글</a>
                         <a href="samples/roster-sample.pdf" download="출동대편성표(더미).pdf">📕 PDF</a>
+                    </div>
+                    <span>응원 소방서 더미 (엑셀)</span>
+                    <div>
+                        <a href="samples/roster-michuhol.xlsx" download="출동대편성표_미추홀(더미).xlsx">미추홀</a>
+                        <a href="samples/roster-geomdan.xlsx" download="출동대편성표_검단(더미).xlsx">검단</a>
+                        <a href="samples/roster-ganghwa.xlsx" download="출동대편성표_강화(더미).xlsx">강화</a>
+                        <a href="samples/roster-seohae.xlsx" download="출동대편성표_서해(더미).xlsx">서해</a>
+                        <a href="samples/roster-bupyeong.xlsx" download="출동대편성표_부평(더미).xlsx">부평</a>
                     </div>
                 </div>
             </div>
@@ -138,6 +184,10 @@
                     <input type="number" id="dangerTime" value="40" min="1" max="90">
                 </div>
                 <div class="setting-group">
+                    <label>압력계 톤</label>
+                    <div id="themePicks" class="theme-picks"></div>
+                </div>
+                <div class="setting-group">
                     <label>알림 활성화</label>
                     <div class="toggle-switch">
                         <input type="checkbox" id="soundEnabled" checked>
@@ -153,11 +203,11 @@
                     </div>
                     <div class="toggle-switch">
                         <input type="checkbox" id="flashEnabled" checked>
-                        <label for="flashEnabled">화면 깜빡임 (경고 주황 · 위험 빨강)</label>
+                        <label for="flashEnabled">화면 깜빡임 (경고 주황 · 위험 빨강↔흰색)</label>
                     </div>
                 </div>
                 <div class="setting-group">
-                    <button id="showLogBtn" class="btn btn-secondary">📝 활동 기록 보기</button>
+                    <button id="showLogBtn" class="btn btn-secondary">활동 기록 보기</button>
                 </div>
                 <div class="setting-group">
                     <button id="clearDataBtn" class="btn btn-warning">모든 데이터 초기화</button>
@@ -177,11 +227,12 @@
                 <!-- 출동대편성표에서 선택 -->
                 <div id="rosterPicker" class="roster-picker">
                     <div class="roster-picker-head">
-                        <span>📋 출동대편성표에서 선택</span>
+                        <span>출동대편성표에서 선택</span>
                     </div>
                     <p id="rosterInfo" class="roster-info"></p>
                     <div id="stepCenter" class="picker-step">
-                        <div class="picker-step-title">① 안전센터 선택</div>
+                        <div class="picker-step-title">① 소방서 · 안전센터 선택</div>
+                        <div id="rosterStations"></div>
                         <div id="rosterCenters" class="chip-row"></div>
                         <p class="picker-error">여기서 안전센터를 먼저 눌러 주세요.</p>
                     </div>
@@ -198,10 +249,27 @@
                     <label for="teamName">대명</label>
                     <input type="text" id="teamName" placeholder="예: 성산대, 1착대">
                 </div>
-                <div class="form-group">
-                    <label for="assignedFloor">배정층</label>
-                    <input type="number" id="assignedFloor" inputmode="numeric" step="1" placeholder="숫자만 입력 (예: 16)">
-                    <p class="form-hint">지하층은 앞에 - 를 붙여 주세요. 예) 지하 2층 → -2</p>
+                <div class="form-group loc-step" id="stepLocation">
+                    <label>배정 위치 <span class="required">필수</span></label>
+                    <!-- 건물은 층, 창고·전통시장처럼 넓은 1층은 구역 -->
+                    <div class="loc-toggle" id="locToggle">
+                        <button type="button" data-loc="floor" class="active">층</button>
+                        <button type="button" data-loc="zone">구역 (넓은 현장)</button>
+                    </div>
+                    <div id="locFloor">
+                        <input type="number" id="assignedFloor" inputmode="numeric" step="1" placeholder="숫자만 입력 (예: 16)">
+                        <p class="form-hint">지하층은 앞에 - 를 붙여 주세요. 예) 지하 2층 → -2</p>
+                    </div>
+                    <div id="locZone" hidden>
+                        <div class="chip-row" id="zoneChips">
+                            <button type="button" class="chip" data-zone="전면">전면</button>
+                            <button type="button" class="chip" data-zone="후면">후면</button>
+                            <button type="button" class="chip" data-zone="좌측">좌측</button>
+                            <button type="button" class="chip" data-zone="우측">우측</button>
+                        </div>
+                        <input type="text" id="assignedZone" maxlength="20" placeholder="직접 입력 (예: B동, 3번 출입구)">
+                    </div>
+                    <p class="picker-error">층 또는 구역을 넣어야 저장됩니다.</p>
                 </div>
                 <div class="modal-actions">
                     <button id="saveTeamBtn" class="btn btn-primary">저장</button>
@@ -216,15 +284,56 @@
     <div id="logModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>📝 활동 기록</h2>
+                <h2>활동 기록</h2>
                 <button id="closeLogModalBtn" class="btn-close">✕</button>
             </div>
             <div class="modal-body">
                 <div class="log-actions">
-                    <button id="exportLogBtn" class="btn btn-primary">📊 엑셀(CSV)로 내보내기</button>
+                    <button id="exportLogBtn" class="btn btn-primary">엑셀(CSV)로 내보내기</button>
                     <button id="clearLogBtn" class="btn btn-secondary">기록 지우기</button>
                 </div>
                 <div id="logList" class="log-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 현황 보고: 층별로 어느 대가 얼마나 진입해 있는지 -->
+    <div id="reportModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="reportTitle">현황 보고</h2>
+                <button id="closeReportModalBtn" class="btn-close">✕</button>
+            </div>
+            <div class="modal-body">
+                <div id="reportBody"></div>
+                <div class="report-say">
+                    <div class="report-say-head">
+                        <strong>보고 문장</strong>
+                        <span>무전·대면 보고에 그대로 읽으세요</span>
+                    </div>
+                    <p id="reportText"></p>
+                    <div class="modal-actions">
+                        <button id="reportCopyBtn" class="btn btn-primary">문장 복사</button>
+                        <button id="reportSpeakBtn" class="btn btn-secondary">소리로 읽기</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 새로고침·다시 열었을 때 진입 중인 대가 있으면: 이어서 할지 새 현장을 시작할지 -->
+    <div id="resumeDialog" class="modal notice-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>진입 중인 대가 있습니다</h2>
+            </div>
+            <div class="modal-body">
+                <p id="resumeMessage"></p>
+                <div class="modal-actions">
+                    <button id="resumeContinueBtn" class="btn btn-primary">이어서 하기</button>
+                    <button id="resumeNewBtn" class="btn btn-warning">새 현장 시작 (모두 지움)</button>
+                </div>
+                <button id="resumeExportBtn" class="btn btn-secondary resume-export">지우기 전에 활동 기록 엑셀로 내보내기</button>
             </div>
         </div>
     </div>
@@ -245,6 +354,22 @@
         </div>
     </div>
 
+    <!-- 소속·차량을 고르지 않고 진입 시작을 눌렀을 때 -->
+    <div id="unitRequiredDialog" class="modal notice-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⚠ 진입 전에 입력하세요</h2>
+            </div>
+            <div class="modal-body">
+                <p id="unitRequiredMessage"></p>
+                <div class="modal-actions">
+                    <button id="unitRequiredPick" class="btn btn-primary">입력하러 가기</button>
+                    <button id="unitRequiredClose" class="btn btn-secondary">닫기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 경고·위험 화면 깜빡임 (누르는 것은 막지 않는다) -->
     <div id="alertFlash" class="alert-flash" aria-live="assertive">
         <div id="alertFlashBanner" class="alert-flash-banner" hidden></div>
@@ -257,6 +382,7 @@
 
     <script src="storage.js"></script>
     <script src="roster.js"></script>
+    <script src="gauge.js"></script>
     <script src="app.js"></script>
     <script src="intro.js"></script>
     <script>

@@ -70,3 +70,21 @@ test('주)·야) 나누기 규칙', () => {
     assert.deepEqual(Roster.parseShift('김가, 이나.박다'), { day: ['김가', '이나', '박다'], night: ['김가', '이나', '박다'] });
     assert.deepEqual(Roster.parseShift('()'), { day: [], night: [] });
 });
+
+test('응원 출동용 다른 소방서 더미 편성표 5곳', async () => {
+    const want = {
+        michuhol: ['인천미추홀소방서', ['주안119안전센터', '도화119안전센터', '용현119안전센터', '미추홀119구조대']],
+        geomdan: ['인천검단소방서', ['검단119안전센터', '원당119안전센터', '불로119안전센터', '검단119구조대']],
+        ganghwa: ['인천강화소방서', ['강화119안전센터', '길상119안전센터', '교동119안전센터', '강화119구조대']],
+        seohae: ['인천서해소방서', ['청라119안전센터', '가정119안전센터', '석남119안전센터', '서해119구조대']],
+        bupyeong: ['인천부평소방서', ['삼산119안전센터', '부개119안전센터', '십정119안전센터', '부평119구조대']]
+    };
+    for (const [key, [org, centers]] of Object.entries(want)) {
+        const r = Roster.gridsToRoster(await Roster.xlsxToGrids(buf(`roster-${key}.xlsx`)));
+        assert.match(r.org, new RegExp(`^${org}`));
+        assert.deepEqual(r.centers.map((c) => c.name), centers);
+        const pump = vehicle(r, centers[0], '펌프차');
+        assert.equal(pump.crew.day.length, 3, `${key} 펌프차 진압대원`);
+        assert.equal(pump.driver.day.length, 1);
+    }
+});

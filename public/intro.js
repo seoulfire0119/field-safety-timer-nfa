@@ -3,8 +3,8 @@
     const steps = [
         {
             target: '.status-overview',
-            pill: ['pill-red', '📊 상황판'],
-            text: '대기·진입중·경고·위험 상태인 <b>대의 수</b>를 한눈에 볼 수 있습니다.'
+            pill: ['pill-red', '상황판'],
+            text: '대기·진입중·일시정지·경고·위험 상태인 <b>대의 수</b>를 한눈에 볼 수 있습니다.<br>경고·위험인 대는 카드 맨 위로 올라옵니다.'
         },
         {
             target: '.team-card .btn-start',
@@ -13,27 +13,27 @@
         },
         {
             target: '.team-card .btn-edit',
-            pill: ['pill-orange', '✏️ 이름 변경'],
+            pill: ['pill-orange', '이름 변경'],
             text: '<b>연필</b> 버튼으로 1착대 이름을 바꿀 수 있습니다.<br>편성표를 불러왔다면 <b>안전센터 → 차량</b>을 눌러 탑승 대원까지 넣을 수 있습니다.'
         },
         {
             target: '#rosterBtn',
-            pill: ['pill-blue', '📋 편성표'],
+            pill: ['pill-blue', '편성표'],
             text: '<b>출동대편성표</b>(엑셀·한글 hwpx·PDF)를 불러옵니다.<br>차량별로 <b>누가 진입했고 얼마나 됐는지</b> 볼 수 있습니다.'
         },
         {
             target: '#settingsBtn',
-            pill: ['pill-orange', '⚙️ 시간 설정'],
+            pill: ['pill-orange', '시간 설정'],
             text: '<b>톱니바퀴</b>를 누르면 <b class="c-warn">경고시간</b>과 <b class="c-danger">위험시간</b>이 나오며, 시간 설정을 변경할 수 있습니다.'
         },
         {
             target: '#addTeamBtn',
-            pill: ['pill-blue', '➕ 대 추가'],
-            text: '<b>더하기</b> 버튼을 누르면 진압대를 더 추가할 수 있습니다.'
+            pill: ['pill-blue', '대 추가'],
+            text: '<b>대 추가</b>(더하기) 버튼을 누르면 진압대를 더 추가할 수 있습니다.'
         },
         {
             target: '#aboutSection',
-            pill: ['pill-red', '🚒 만든 이유'],
+            pill: ['pill-red', '만든 이유'],
             text: '앱을 만든 이유와 소개 그림은 화면 맨 아래에서 <b>펼쳐</b> 볼 수 있습니다.'
         }
     ];

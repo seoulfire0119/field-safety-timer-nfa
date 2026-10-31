@@ -2,6 +2,8 @@
 #   python samples/build_samples.py
 # 같은 표 정의(LAYOUT)로 xlsx 는 openpyxl, hwpx·pdf 는 한글(HWP) 프로그램을 자동 조작해 만든다.
 # 결과는 앱에서 바로 체험·내려받기 하도록 public/samples/roster-sample.* 로 저장한다.
+# 응원 출동 체험용으로 다른 소방서 5곳 편성표(public/samples/roster-<서>.xlsx)도 만든다.
+#   python samples/build_samples.py --no-hwp   (한글 프로그램 없이 엑셀만)
 # 이름은 모두 가짜(예시)다.
 import os
 import sys
@@ -27,7 +29,7 @@ HEAD_FILL = 'DCE6F1'
 COLS = [110, 94, 142, 123, 116, 208, 123, 105, 79, 116, 122, 101, 73, 80, 51, 66, 223]
 # 행 높이(px)
 # 차량 행과 하단 행 높이는 UNITS 를 읽으며 뒤에 붙인다
-ROWS = [70, 70, 68, 35, 69, 35, 34, 34, 35, 34, 24, 107, 69]
+HEAD_ROWS = [70, 70, 68, 35, 69, 35, 34, 34, 35, 34, 24, 107, 69]
 
 
 def run(text, color=None):
@@ -37,10 +39,10 @@ def run(text, color=None):
 # (행, 열, 행병합, 열병합, 내용, 스타일)
 #   내용: 문자열 또는 [(글자, 색)] 목록
 #   스타일: h=머리칸 음영, l=왼쪽 정렬, s=음영만(빈칸), banner/title/org/date=제목줄(테두리 없음)
-LAYOUT = [
+HEAD = [
     (0, 0, 1, 17, [run('조직과 동료 가족을 위해 ', BLUE), run('음주운전', RED), run(' 제로화!', BLUE)], 'banner'),
     (1, 0, 1, 17, '출   동   대   편   성   표', 'title'),
-    (2, 0, 1, 9, '인천계양소방서[당번(3팀)]', 'org'),
+    (2, 0, 1, 9, '{org}', 'org'),
     (2, 9, 1, 8, '2026년 10월 28일 수요일', 'date'),
 
     # 인원 현황
@@ -78,7 +80,7 @@ LAYOUT = [
     (12, 6, 1, 1, '운전요원6', 'h'), (12, 7, 1, 3, '진압대원\n비8', 'h'),
     (12, 10, 1, 1, '운전요원4', 'h'), (12, 11, 1, 4, '진압대원\n비7', 'h'),
 
-    # 차량별 편성(센터별)과 하단은 아래 UNITS 에서 행 번호를 계산해 붙인다
+    # 차량별 편성(센터별)과 하단은 make_layout 에서 행 번호를 계산해 붙인다
 ]
 
 # 차량별 편성: 차량, 3팀 운전, 3팀 진압, 1팀 운전, 1팀 진압, 2팀 운전, 2팀 진압
@@ -136,36 +138,126 @@ UNITS = [
     ('계양119구조대\n주 : 2\n야 : 2', '구조대장\n(당번)', RESCUE, [(0, 2, '교육: 누리솔(~10.31)', 'l')], [40] * 2),
 ]
 
-r = 13
-for center, chief, vehicles, notes, heights in UNITS:
-    n = len(vehicles)
-    LAYOUT += [(r, 0, n, 1, center, ''), (r, 1, n, 1, chief, '')]
-    for off, rs, text, style in notes:
-        LAYOUT.append((r + off, 15, rs, 2, text, style))
-    for i, (veh, d3, c3, d1, c1, d2, c2) in enumerate(vehicles):
-        LAYOUT += [
-            (r + i, 2, 1, 1, veh, ''),
-            (r + i, 3, 1, 1, d3, ''), (r + i, 4, 1, 2, c3, 'l'),
-            (r + i, 6, 1, 1, d1, ''), (r + i, 7, 1, 3, c1, 'l'),
-            (r + i, 10, 1, 1, d2, ''), (r + i, 11, 1, 4, c2, 'l'),
-        ]
-    ROWS += heights
-    r += n
+def make_layout(org, units):
+    """소방서 이름과 센터별 차량 편성으로 표 전체(LAYOUT, ROWS, LAST_ROW)를 만든다"""
+    layout = [(r, c, rs, cs, org if content == '{org}' else content, style)
+              for r, c, rs, cs, content, style in HEAD]
+    rows = list(HEAD_ROWS)
+    r = 13
+    for center, chief, vehicles, notes, heights in units:
+        n = len(vehicles)
+        layout += [(r, 0, n, 1, center, ''), (r, 1, n, 1, chief, '')]
+        for off, rs, text, style in notes:
+            layout.append((r + off, 15, rs, 2, text, style))
+        for i, (veh, d3, c3, d1, c1, d2, c2) in enumerate(vehicles):
+            layout += [
+                (r + i, 2, 1, 1, veh, ''),
+                (r + i, 3, 1, 1, d3, ''), (r + i, 4, 1, 2, c3, 'l'),
+                (r + i, 6, 1, 1, d1, ''), (r + i, 7, 1, 3, c1, 'l'),
+                (r + i, 10, 1, 1, d2, ''), (r + i, 11, 1, 4, c2, 'l'),
+            ]
+        rows += heights
+        r += n
 
-# 하단: 사고내용, 소내근무
-B = r
-LAYOUT += [
-    (B, 0, 1, 4, '사고내용', 'h'), (B, 4, 1, 3, '', ''), (B, 7, 1, 4, '', ''), (B, 11, 1, 4, '', ''),
-    (B, 15, 1, 2, [run('○ 당 번 자 현 황', BLUE)], 'h'),
-    (B + 1, 0, 2, 3, '소내근무', 'h'), (B + 1, 3, 1, 1, '시간', 'h'), (B + 2, 3, 1, 1, '근무자', 'h'),
-    (B + 1, 15, 2, 2, '', ''),
+    # 하단: 사고내용, 소내근무
+    b = r
+    layout += [
+        (b, 0, 1, 4, '사고내용', 'h'), (b, 4, 1, 3, '', ''), (b, 7, 1, 4, '', ''), (b, 11, 1, 4, '', ''),
+        (b, 15, 1, 2, [run('○ 당 번 자 현 황', BLUE)], 'h'),
+        (b + 1, 0, 2, 3, '소내근무', 'h'), (b + 1, 3, 1, 1, '시간', 'h'), (b + 2, 3, 1, 1, '근무자', 'h'),
+        (b + 1, 15, 2, 2, '', ''),
+    ]
+    for i, t in enumerate(['09~12', '12~14', '14~16', '16~18', '18~20', '20~22',
+                           '22~00', '00~02', '02~04', '04~06', '06~09']):
+        layout.append((b + 1, 4 + i, 1, 1, t, ''))
+        layout.append((b + 2, 4 + i, 1, 1, '', ''))
+    rows += [40, 30, 30]
+    return layout, rows, b + 2
+
+
+# ---------------------------------------------------------------- 응원 출동용 다른 소방서 (가짜 이름)
+# 차량 이름만 정하면 대원 이름은 가짜로 채운다. 내부 진입 차량은 대원 여럿, 나머지는 겸직(괄호)
+SURNAMES = '김이박최정강조윤장임한오서신권황안송류홍전고문양손배백허남심노하곽성차주우구민유나진지엄채원천방공현함변염여추도소석선설마길연위표명기반왕금옥육인맹제모탁국어은편용예경봉'
+GIVEN = ['가람', '나래', '다온', '라온', '마루', '바다', '사랑', '아름', '자람', '찬솔', '카라', '타미', '파랑', '하늘',
+         '가온', '나길', '다솜', '라희', '마음', '바름', '새봄', '아라', '자두', '차돌', '해솔', '보람', '다미', '단비',
+         '고운', '바로', '나비', '솔빛', '새롬', '아솔', '하율', '초롱', '디울', '지환', '새별', '도윤', '하진',
+         '주안', '은솔', '해든', '시온', '다님', '가비', '란솔', '아리', '나린', '여름', '소리', '한결', '누리', '도담',
+         '시우', '태산', '하람', '채윤', '한별', '성민', '기찬', '바위', '로운', '이안', '서진', '하윤', '지안']
+_used = set()
+
+
+def fake_names(rng, n):
+    out = []
+    while len(out) < n:
+        name = rng.choice(SURNAMES) + rng.choice(GIVEN)
+        if name not in _used:
+            _used.add(name)
+            out.append(name)
+    return out
+
+
+ENTRY = ('펌프', '탱크', '구조', '화학')
+
+
+def make_units(rng, centers):
+    """centers: [(센터 칸 글자, 센터장 칸, [차량 이름])]"""
+    units = []
+    for label, chief, vehicles in centers:
+        rows = []
+        for v in vehicles:
+            if any(k in v for k in ENTRY):
+                crew = 4 if '구조' in v else 3
+                d3, d1, d2 = fake_names(rng, 3)
+                c3 = ','.join(fake_names(rng, crew))
+                c1 = ', '.join(fake_names(rng, 2))
+                c2 = ', '.join(fake_names(rng, 2))
+            elif '구급' in v:
+                d3, d1, d2 = fake_names(rng, 3)
+                c3, c1, c2 = (', '.join(fake_names(rng, 2)) for _ in range(3))
+            else:
+                # 고가·굴절·산불진화 등은 다른 차량 대원이 겸한다
+                d3, d1, d2 = (f'({x})' for x in fake_names(rng, 3))
+                c3, c1, c2 = '', '', ''
+            rows.append((v, d3, c3, d1, c1, d2, c2))
+        units.append((label, chief, rows, [(0, len(rows), '', '')], [40] * len(rows)))
+    return units
+
+
+SAFETY = '센터장\n(당번)'
+RESCUE_CHIEF = '구조대장\n(당번)'
+OTHER_STATIONS = [
+    ('michuhol', '인천미추홀소방서[당번(1팀)]', [
+        ('[주안]20\n주 : 1\n야 : 1', SAFETY, ['펌프차', '물탱크차', '고가차', '구급차']),
+        ('[도화]18\n주 : 1\n야 : 1', SAFETY, ['펌프차', '물탱크차', '구급차']),
+        ('[용현]18\n주 : 1\n야 : 1', SAFETY, ['펌프차', '물탱크차', '굴절차', '구급차']),
+        ('미추홀119구조대\n주 : 2\n야 : 2', RESCUE_CHIEF, ['구조버스', '구조공작차']),
+    ]),
+    ('geomdan', '인천검단소방서[당번(2팀)]', [
+        ('[검단]22\n주 : 1\n야 : 1', SAFETY, ['펌프차', '물탱크차', '고가차', '굴절차', '산불진화차', '구급차']),
+        ('[원당]18\n주 : 1\n야 : 1', SAFETY, ['펌프차', '물탱크차', '구급차']),
+        ('[불로]18\n주 : 1\n야 : 1', SAFETY, ['펌프차', '물탱크차', '산불진화차', '구급차']),
+        ('검단119구조대\n주 : 2\n야 : 2', RESCUE_CHIEF, ['구조버스', '구조공작차']),
+    ]),
+    ('ganghwa', '인천강화소방서[당번(3팀)]', [
+        ('[강화]20\n주 : 1\n야 : 1', SAFETY, ['펌프차', '물탱크차', '굴절차', '산불진화차', '구급차']),
+        ('[길상]16\n주 : 1\n야 : 1', SAFETY, ['펌프차', '물탱크차', '산불진화차', '구급차']),
+        ('[교동]12\n주 : 1\n야 : 1', SAFETY, ['펌프차', '물탱크차', '구급차']),
+        ('강화119구조대\n주 : 2\n야 : 2', RESCUE_CHIEF, ['구조버스', '구조공작차']),
+    ]),
+    ('seohae', '인천서해소방서[당번(1팀)]', [
+        ('[청라]22\n주 : 1\n야 : 1', SAFETY, ['펌프차', '물탱크차', '고가차', '화학차', '구급차']),
+        ('[가정]18\n주 : 1\n야 : 1', SAFETY, ['펌프차', '물탱크차', '구급차']),
+        ('[석남]18\n주 : 1\n야 : 1', SAFETY, ['펌프차', '물탱크차', '굴절차', '구급차']),
+        ('서해119구조대\n주 : 2\n야 : 2', RESCUE_CHIEF, ['구조버스', '구조공작차']),
+    ]),
+    ('bupyeong', '인천부평소방서[당번(2팀)]', [
+        ('[삼산]22\n주 : 1\n야 : 1', SAFETY, ['펌프차', '물탱크차', '고가차', '구급차']),
+        ('[부개]18\n주 : 1\n야 : 1', SAFETY, ['펌프차', '물탱크차', '구급차']),
+        ('[십정]18\n주 : 1\n야 : 1', SAFETY, ['펌프차', '물탱크차', '굴절차', '화학차', '구급차']),
+        ('부평119구조대\n주 : 2\n야 : 2', RESCUE_CHIEF, ['구조버스', '구조공작차']),
+    ]),
 ]
-for i, t in enumerate(['09~12', '12~14', '14~16', '16~18', '18~20', '20~22',
-                       '22~00', '00~02', '02~04', '04~06', '06~09']):
-    LAYOUT.append((B + 1, 4 + i, 1, 1, t, ''))
-    LAYOUT.append((B + 2, 4 + i, 1, 1, '', ''))
-ROWS += [40, 30, 30]
-LAST_ROW = B + 2
+
 
 NO_BORDER = {'banner', 'title', 'org', 'date'}
 
@@ -175,7 +267,7 @@ def runs_of(content):
 
 
 # ---------------------------------------------------------------- 엑셀
-def build_xlsx(path):
+def build_xlsx(path, LAYOUT, ROWS):
     wb = Workbook()
     ws = wb.active
     ws.title = NAME
@@ -234,7 +326,7 @@ def html_text(parts):
     return ''.join(out)
 
 
-def build_html(path, scale=0.385):
+def build_html(path, LAYOUT, ROWS, LAST_ROW, scale=0.385):
     # 한 쪽(A4 세로)에 들어가도록 줄인다
     def px(v):
         return max(1, round(v * scale))
@@ -318,13 +410,23 @@ def build_hwp(html_path, hwpx_path, pdf_path):
 
 
 if __name__ == '__main__':
+    import random
     os.makedirs(OUT, exist_ok=True)
+    # 계양(기본): 엑셀·한글·PDF
+    layout, rows, last = make_layout('인천계양소방서[당번(3팀)]', UNITS)
     xlsx = os.path.abspath(os.path.join(OUT, BASE + '.xlsx'))
     htm = os.path.abspath(os.path.join(OUT, BASE + '.html'))
-    build_xlsx(xlsx)
-    build_html(htm)
-    print('xlsx, html 완료')
+    build_xlsx(xlsx, layout, rows)
+    build_html(htm, layout, rows, last)
+    print('계양 xlsx, html 완료')
     if '--no-hwp' not in sys.argv:
         build_hwp(htm, xlsx[:-5] + '.hwpx', xlsx[:-5] + '.pdf')
-        os.remove(htm)
-        print('hwpx, pdf 완료')
+        print('계양 hwpx, pdf 완료')
+    os.remove(htm)
+
+    # 응원 출동용 다른 소방서: 엑셀만 (이름이 매번 같게 나오도록 씨앗 고정)
+    rng = random.Random(119)
+    for key, org, centers in OTHER_STATIONS:
+        layout, rows, _ = make_layout(org, make_units(rng, centers))
+        build_xlsx(os.path.join(OUT, f'roster-{key}.xlsx'), layout, rows)
+        print(f'{org} xlsx 완료')

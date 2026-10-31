@@ -65,6 +65,10 @@ async function addVehicle(page, center, vehicle, floor) {
     await sleep(300);
 }
 
-const lastCard = async (page) => (await page.$$('.team-card')).pop();
+// 마지막으로 추가한 대의 카드 (카드는 상태 순으로 정렬되므로 화면 순서가 아니라 id 로 찾는다)
+const lastCard = async (page) => {
+    const id = await page.evaluate(() => window.fieldSafetyTimer.teams.at(-1).id);
+    return page.$(`[data-team-id="${id}"]`);
+};
 
 module.exports = { APP_URL, sleep, launch, openApp, click, isShown, startWithDummy, addVehicle, lastCard };
