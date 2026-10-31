@@ -1,8 +1,17 @@
 *.hwpx
 *.hwp
 *.pdf
+# 더미 편성표(가짜 이름)는 앱이 쓰므로 올린다
+!public/samples/*.hwpx
+!public/samples/*.pdf
 화면 캡처*
 
 # 실명이 들어 있는 원본 편성표 (제출·공유 제외)
 출동대편성표.png
 node_modules
+
+# Firebase 배포 캐시
+.firebase/
+
+# 디자인 참고용 사진 (올리지 않음)
+참고사진*.jpg
