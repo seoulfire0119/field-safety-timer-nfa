@@ -45,6 +45,10 @@
             </div>
             <div class="header-actions">
                 <button id="helpBtn" class="btn-help" title="사용방법 안내">사용방법</button>
+                <button type="button" id="reportBtn" class="btn-icon" title="현황 보고" aria-label="현황 보고">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 10h16M4 15h10M4 20h7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+                    <span>현황 보고</span>
+                </button>
                 <button id="rosterBtn" class="btn-icon" title="출동대편성표 불러오기" aria-label="출동대편성표 불러오기">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v3H8zM6 5.5H4.5V21h15V5.5H18M8 11h8M8 15h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
                     <span>편성표</span>
@@ -87,14 +91,8 @@
             </button>
         </div>
 
-        <!-- 거르기 중 표시 + 현황 보고 -->
-        <div class="board-bar">
-            <div id="filterInfo" class="filter-info" hidden></div>
-            <button type="button" id="reportBtn" class="btn-report">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 10h16M4 15h10M4 20h7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
-                현황 보고
-            </button>
-        </div>
+        <!-- 거르기 중 표시 (현황 보고는 위쪽 버튼 줄로 옮김) -->
+        <div id="filterInfo" class="filter-info" hidden></div>
 
         <!-- 대 목록 -->
         <div id="teamsList" class="teams-list">
@@ -267,22 +265,111 @@
                     <div id="locFloor">
                         <input type="number" id="assignedFloor" inputmode="numeric" step="1" placeholder="숫자만 입력 (예: 16)">
                         <p class="form-hint">지하층은 앞에 - 를 붙여 주세요. 예) 지하 2층 → -2</p>
+                        <!-- 방면: 건물 정면이 A, 시계 방향으로 B·C·D. 고르지 않아도 된다 -->
+                        <div class="side-pick">
+                            <span class="side-pick-label">방면 <small>(선택)</small></span>
+                            <div class="side-chips" id="sideChips">
+                                <button type="button" data-side="">없음</button>
+                                <button type="button" data-side="A">A</button>
+                                <button type="button" data-side="B">B</button>
+                                <button type="button" data-side="C">C</button>
+                                <button type="button" data-side="D">D</button>
+                            </div>
+                        </div>
                     </div>
                     <div id="locZone" hidden>
-                        <div class="chip-row" id="zoneChips">
-                            <button type="button" class="chip" data-zone="전면">전면</button>
-                            <button type="button" class="chip" data-zone="후면">후면</button>
-                            <button type="button" class="chip" data-zone="좌측">좌측</button>
-                            <button type="button" class="chip" data-zone="우측">우측</button>
-                        </div>
-                        <input type="text" id="assignedZone" maxlength="20" placeholder="직접 입력 (예: B동, 3번 출입구)">
+                        <!-- 최근에 쓴 구역 이름 (없으면 비어 있다) -->
+                        <div class="chip-row" id="zoneChips"></div>
+                        <input type="text" id="assignedZone" maxlength="20" placeholder="구역 이름 (예: B동, 3번 출입구, 냉동창고)">
                     </div>
                     <p class="picker-error">층 또는 구역을 넣어야 저장됩니다.</p>
                 </div>
                 <div class="modal-actions">
                     <button id="saveTeamBtn" class="btn btn-primary">저장</button>
                     <button id="cancelTeamBtn" class="btn btn-secondary">취소</button>
-                    <button id="deleteTeamBtn" class="btn btn-danger" style="display: none;">삭제</button>
+                </div>
+                <!-- 2인1조로 따로 활동: 한 대를 1조·2조 타이머로 나눈다 -->
+                <div class="split-zone" id="splitTeamZone" hidden>
+                    <button id="splitTeamBtn" class="btn btn-secondary">✂ 조 나누기 (1조·2조)</button>
+                </div>
+                <!-- 삭제는 카드에서 빼고 편집 창 맨 아래에만 (실수로 누르지 않게) -->
+                <div class="danger-zone" id="deleteTeamZone" hidden>
+                    <button id="deleteTeamBtn" class="btn btn-danger">이 대 삭제</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 조 나누기: 2조로 갈 대원과 위치를 고르면 타이머가 둘로 나뉜다 (진입 시각은 그대로) -->
+    <div id="splitModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="splitModalTitle">조 나누기</h2>
+                <button id="closeSplitModalBtn" class="btn-close" aria-label="닫기">✕</button>
+            </div>
+            <div class="modal-body">
+                <p id="splitLead" class="loc-now"></p>
+                <div class="split-step-title">① 2조로 갈 대원</div>
+                <div id="splitMembers" class="loc-grid split-members"></div>
+                <div class="split-step-title">② 2조 위치</div>
+                <div class="side-pick">
+                    <span class="side-pick-label">방면</span>
+                    <div class="side-chips" id="splitSideChips">
+                        <button type="button" data-side="">없음</button>
+                        <button type="button" data-side="A">A</button>
+                        <button type="button" data-side="B">B</button>
+                        <button type="button" data-side="C">C</button>
+                        <button type="button" data-side="D">D</button>
+                    </div>
+                </div>
+                <div id="splitFloorGrid" class="loc-grid"></div>
+                <div class="loc-direct">
+                    <input type="number" id="splitFloorInput" inputmode="numeric" step="1" placeholder="직접 입력 (지하는 -2)">
+                </div>
+                <div class="modal-actions">
+                    <button type="button" id="splitApplyBtn" class="btn btn-primary">나누기</button>
+                    <button type="button" id="splitCancelBtn" class="btn btn-secondary">취소</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 위치(층·구역) 바꾸기: 카드의 층 버튼을 누르면 -->
+    <div id="locModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="locModalTitle">위치</h2>
+                <button id="closeLocModalBtn" class="btn-close" aria-label="닫기">✕</button>
+            </div>
+            <div class="modal-body">
+                <p id="locModalNow" class="loc-now"></p>
+                <div class="loc-toggle" id="locPickToggle">
+                    <button type="button" data-loc="floor" class="active">층</button>
+                    <button type="button" data-loc="zone">구역 (넓은 현장)</button>
+                </div>
+                <div id="locPickFloor">
+                    <div class="side-pick">
+                        <span class="side-pick-label">방면</span>
+                        <div class="side-chips" id="locSideChips">
+                            <button type="button" data-side="">없음</button>
+                            <button type="button" data-side="A">A</button>
+                            <button type="button" data-side="B">B</button>
+                            <button type="button" data-side="C">C</button>
+                            <button type="button" data-side="D">D</button>
+                        </div>
+                    </div>
+                    <div id="locFloorGrid" class="loc-grid"></div>
+                    <div class="loc-direct">
+                        <input type="number" id="locFloorInput" inputmode="numeric" step="1" placeholder="직접 입력 (지하는 -2)">
+                        <button type="button" id="locFloorApply" class="btn btn-primary">바꾸기</button>
+                    </div>
+                </div>
+                <div id="locPickZone" hidden>
+                    <div id="locZoneGrid" class="loc-grid loc-grid-zone"></div>
+                    <div class="loc-direct">
+                        <input type="text" id="locZoneInput" maxlength="20" placeholder="직접 입력 (예: B동)">
+                        <button type="button" id="locZoneApply" class="btn btn-primary">바꾸기</button>
+                    </div>
                 </div>
             </div>
         </div>

@@ -132,7 +132,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
     padding: 6px 10px;
     border-radius: 10px;
     font: inherit;
-    font-size: 0.72rem;
+    font-size: 0.82rem;
     font-weight: 700;
     white-space: nowrap;
     cursor: pointer;
@@ -177,7 +177,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
     .header-actions {
         width: 100%;
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(5, 1fr);
+        gap: 6px;
+    }
+
+    .btn-icon, .btn-help {
+        min-width: 0;
+        padding: 6px 2px;
     }
 
     .header h1 {
@@ -193,20 +199,22 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
     margin-bottom: 14px;
 }
 
+/* 이름을 위, 숫자를 아래 가운데로 크게 (멀리서도 읽히게) */
 .status-card {
     font: inherit;
     color: inherit;
-    text-align: left;
     cursor: pointer;
     background: var(--surface);
     border: 1px solid var(--line);
-    border-top: 4px solid var(--idle);
-    border-radius: 10px;
-    padding: 8px 12px;
+    border-top: 6px solid var(--idle);
+    border-radius: 12px;
+    padding: 8px 6px 6px;
     display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 4px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    min-height: 96px;
 }
 
 .status-card:nth-child(2) { border-top-color: var(--ok); }
@@ -215,17 +223,24 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
 .status-card.danger { border-top-color: var(--danger); }
 
 .status-label {
-    font-size: 0.85rem;
-    color: var(--muted);
-    font-weight: 600;
+    font-size: 1.15rem;
+    color: var(--fg);
+    font-weight: 800;
+    white-space: nowrap;
 }
 
 .status-count {
     font-family: var(--font-num);
-    font-size: 2rem;
+    font-size: 3rem;
     font-weight: 700;
-    line-height: 1.1;
+    line-height: 1;
     font-variant-numeric: tabular-nums;
+}
+
+/* 0이면 흐리게: 숫자가 있는 칸이 바로 눈에 띄게 */
+.status-card.zero .status-count {
+    color: var(--muted);
+    opacity: 0.55;
 }
 
 .status-card.warning.has {
@@ -255,17 +270,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
     outline-offset: 2px;
 }
 
-.board-bar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 8px;
-    margin: -4px 0 14px;
-}
-
 .filter-info {
-    flex: 1;
+    margin: -4px 0 14px;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -376,6 +382,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
     margin: 0;
 }
 
+.report-side {
+    padding: 1px 8px;
+    border: 1.5px solid var(--line);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 800;
+}
+
 .report-min {
     margin-left: auto;
     font-family: var(--font-num);
@@ -435,10 +449,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
 
 @media (max-width: 480px) {
     .status-card {
-        flex-direction: column;
-        align-items: center;
-        padding: 6px 4px;
-        gap: 0;
+        padding: 6px 2px 4px;
+        min-height: 78px;
     }
 
     .status-overview {
@@ -446,12 +458,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
     }
 
     .status-label {
-        font-size: 0.74rem;
-        white-space: nowrap;
+        font-size: 0.92rem;
     }
 
     .status-count {
-        font-size: 1.7rem;
+        font-size: 2.3rem;
     }
 }
 
@@ -616,10 +627,245 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
     padding: 2px 10px;
 }
 
+/* 위치 버튼: 누르면 층·구역을 바로 바꾼다. 이름(왼쪽)보다 한 단계 작게, 버튼처럼 테두리·▾ */
+.btn-floor {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    padding: 4px 10px 4px 12px;
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface-2);
+    color: var(--fg);
+    font: inherit;
+    font-size: 1.2rem;
+    font-weight: 800;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.btn-floor .team-floor {
+    background: none;
+    padding: 0;
+    font-size: inherit;
+}
+
+.btn-floor-chev {
+    font-size: 0.75em;
+    opacity: 0.6;
+}
+
+.btn-floor:hover {
+    border-color: var(--fg);
+}
+
+.btn-floor-missing {
+    border-style: dashed;
+    border-color: var(--danger);
+    background: transparent;
+    color: var(--danger);
+    font-size: 1.05rem;
+}
+
+.team-card.tone-danger .btn-floor {
+    background: color-mix(in srgb, var(--dg-fg) 18%, transparent);
+    border-color: color-mix(in srgb, var(--dg-fg) 55%, transparent);
+    color: var(--dg-fg);
+}
+
+.team-card.tone-warning .btn-floor {
+    background: var(--surface);
+}
+
+/* 버튼 안의 층 글씨에는 따로 바탕을 깔지 않는다 (위험 카드에서 두 겹으로 보이지 않게) */
+.team-card .btn-floor .team-floor {
+    background: none;
+    padding: 0;
+}
+
 .team-actions {
     display: flex;
     gap: 4px;
     flex-shrink: 0;
+}
+
+/* 목록 끝의 '+' 칸 (대 추가) */
+.add-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 220px;
+    border: 3px dashed var(--line);
+    border-radius: 14px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+}
+
+.add-tile:hover,
+.add-tile:focus-visible {
+    border-color: var(--fg);
+    color: var(--fg);
+}
+
+.add-tile-plus {
+    font-size: 4rem;
+    font-weight: 300;
+    line-height: 1;
+}
+
+.add-tile-text {
+    font-size: 1.15rem;
+    font-weight: 800;
+}
+
+/* 위치 바꾸기 창 */
+.loc-now {
+    margin-bottom: 12px;
+    font-size: 1rem;
+    color: var(--muted);
+    word-break: keep-all;
+}
+
+.loc-now b {
+    color: var(--fg);
+    font-size: 1.15rem;
+}
+
+.loc-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.loc-grid-zone {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+.loc-pick {
+    min-height: 56px;
+    border: 2px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--fg);
+    font: inherit;
+    font-size: 1.25rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.loc-pick.below {
+    background: var(--surface-2);
+}
+
+.loc-pick.active {
+    background: var(--housing);
+    border-color: var(--housing);
+    color: var(--on-housing);
+}
+
+.loc-direct {
+    display: flex;
+    gap: 8px;
+}
+
+.loc-direct input {
+    flex: 1;
+    min-width: 0;
+    padding: 12px 14px;
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--fg);
+    font: inherit;
+    font-size: 1.05rem;
+}
+
+.loc-direct .btn {
+    flex: none;
+}
+
+/* 방면 (A~D, 선택): 층 아래 한 줄 */
+.side-pick {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 10px 0 12px;
+}
+
+.side-pick-label {
+    flex: none;
+    font-weight: 800;
+}
+
+.side-pick-label small {
+    font-weight: 400;
+    color: var(--muted);
+}
+
+.side-chips {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1.3fr repeat(4, 1fr);
+    gap: 6px;
+}
+
+.side-chips button {
+    min-height: 48px;
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--fg);
+    font: inherit;
+    font-size: 1.15rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.side-chips button[data-side=""] {
+    font-size: 0.95rem;
+    color: var(--muted);
+}
+
+.side-chips button.active {
+    background: var(--housing);
+    border-color: var(--housing);
+    color: var(--on-housing);
+}
+
+/* 조 나누기 */
+.split-zone {
+    margin-top: 16px;
+}
+
+.split-zone .btn {
+    width: 100%;
+}
+
+.split-step-title {
+    margin: 14px 0 8px;
+    font-weight: 800;
+}
+
+.split-members {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+/* 편집 창 맨 아래 삭제 */
+.danger-zone {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 2px dashed var(--line);
+}
+
+.danger-zone .btn {
+    width: 100%;
 }
 
 .btn-small {
@@ -647,7 +893,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
     color: var(--dg-fg);
 }
 
-.team-card.tone-danger .team-floor,
 .team-card.tone-danger .btn-small {
     background: color-mix(in srgb, var(--dg-fg) 18%, transparent);
     border-color: transparent;
@@ -1240,18 +1485,34 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
         font-size: 1.05rem;
     }
 
+    /* 휴지통이 빠져서 연필 하나만 남았으므로 크게 */
     .btn-small {
-        width: 36px;
-        height: 36px;
+        width: 42px;
+        height: 42px;
     }
 
     .btn-small .icon {
-        width: 19px;
-        height: 19px;
+        width: 21px;
+        height: 21px;
     }
 
     .team-actions {
         gap: 3px;
+    }
+
+    .btn-floor {
+        min-height: 40px;
+        padding: 3px 8px 3px 10px;
+        gap: 4px;
+        font-size: 1.05rem;
+    }
+
+    .btn-floor-missing {
+        font-size: 0.95rem;
+    }
+
+    .add-tile {
+        min-height: 180px;
     }
 
     .btn {

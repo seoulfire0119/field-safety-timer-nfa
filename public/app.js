@@ -276,6 +276,68 @@ class FieldSafetyTimer {
             this.deleteCurrentTeam();
         });
 
+        // 조 나누기
+        document.getElementById('splitTeamBtn').addEventListener('click', () => {
+            const team = this.currentEditingTeam;
+            if (!team) return;
+            this.closeModal('teamModal');
+            this.showSplitModal(team);
+        });
+        document.getElementById('closeSplitModalBtn').addEventListener('click', () => this.closeModal('splitModal'));
+        document.getElementById('splitCancelBtn').addEventListener('click', () => this.closeModal('splitModal'));
+        document.getElementById('splitApplyBtn').addEventListener('click', () => this.applySplit());
+        document.getElementById('splitMembers').addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-member]');
+            if (!btn || !this.split) return;
+            const name = btn.dataset.member;
+            if (this.split.members.has(name)) this.split.members.delete(name);
+            else this.split.members.add(name);
+            btn.classList.toggle('active', this.split.members.has(name));
+        });
+        document.getElementById('splitSideChips').addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-side]');
+            if (!btn || !this.split) return;
+            this.split.side = btn.dataset.side || null;
+            this.markSide('splitSideChips', this.split.side);
+        });
+        document.getElementById('splitFloorGrid').addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-floor]');
+            if (!btn || !this.split) return;
+            this.split.floor = parseInt(btn.dataset.floor, 10);
+            document.getElementById('splitFloorInput').value = '';
+            document.querySelectorAll('#splitFloorGrid button').forEach(b => b.classList.toggle('active', b === btn));
+        });
+        document.getElementById('splitFloorInput').addEventListener('input', (e) => {
+            if (!this.split) return;
+            this.split.floor = parseInt(e.target.value, 10) || null;
+            document.querySelectorAll('#splitFloorGrid button').forEach(b => b.classList.remove('active'));
+        });
+
+        // 위치 바꾸기 창: 층·구역 하나 누르면 바로 바뀌고 닫힌다
+        document.getElementById('closeLocModalBtn').addEventListener('click', () => this.closeModal('locModal'));
+        document.getElementById('locPickToggle').addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-loc]');
+            if (btn) this.setLocPickMode(btn.dataset.loc);
+        });
+        document.getElementById('locFloorGrid').addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-floor]');
+            if (btn) this.applyLocation(parseInt(btn.dataset.floor, 10), null);
+        });
+        document.getElementById('locSideChips').addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-side]');
+            if (btn) this.pickLocSide(btn.dataset.side);
+        });
+        document.getElementById('locZoneGrid').addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-zone]');
+            if (btn) this.applyLocation(null, btn.dataset.zone);
+        });
+        const applyFloorInput = () => this.applyLocation(parseInt(document.getElementById('locFloorInput').value, 10) || null, null);
+        const applyZoneInput = () => this.applyLocation(null, document.getElementById('locZoneInput').value.trim() || null);
+        document.getElementById('locFloorApply').addEventListener('click', applyFloorInput);
+        document.getElementById('locZoneApply').addEventListener('click', applyZoneInput);
+        document.getElementById('locFloorInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') applyFloorInput(); });
+        document.getElementById('locZoneInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') applyZoneInput(); });
+
         // 배정 위치: 층 / 구역
         document.getElementById('locToggle').addEventListener('click', (e) => {
             const btn = e.target.closest('button[data-loc]');
@@ -288,6 +350,12 @@ class FieldSafetyTimer {
             this.markZoneChip();
         });
         document.getElementById('assignedZone').addEventListener('input', () => this.markZoneChip());
+        document.getElementById('sideChips').addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-side]');
+            if (!btn) return;
+            this.editSide = btn.dataset.side || null;
+            this.markSide('sideChips', this.editSide);
+        });
 
         // 편성표에서 센터 → 차량 → 대원 고르기
         const picker = document.getElementById('rosterPicker');
@@ -379,25 +447,34 @@ class FieldSafetyTimer {
         const title = document.getElementById('teamModalTitle');
         const nameInput = document.getElementById('teamName');
         const floorInput = document.getElementById('assignedFloor');
-        const deleteBtn = document.getElementById('deleteTeamBtn');
+        const deleteZone = document.getElementById('deleteTeamZone');
+
+        // 구역 버튼은 이 현장에서 이미 쓴 구역 이름들
+        document.getElementById('zoneChips').innerHTML = this.recentZones()
+            .map(z => `<button type="button" class="chip" data-zone="${escapeHtml(z)}">${escapeHtml(z)}</button>`).join('');
 
         if (team) {
             title.textContent = '대 편집';
             nameInput.value = team.name;
             floorInput.value = team.floor || '';
             document.getElementById('assignedZone').value = team.zone || '';
+            this.editSide = team.zone ? null : team.side || null;
             this.setLocMode(team.zone ? 'zone' : 'floor');
-            deleteBtn.style.display = 'block';
+            deleteZone.hidden = false;
+            document.getElementById('splitTeamZone').hidden = false;
             this.currentEditingTeam = team;
         } else {
             title.textContent = '대 추가';
             nameInput.value = '';
             floorInput.value = '';
             document.getElementById('assignedZone').value = '';
+            this.editSide = null;
             this.setLocMode('floor');
-            deleteBtn.style.display = 'none';
+            deleteZone.hidden = true;
+            document.getElementById('splitTeamZone').hidden = true;
             this.currentEditingTeam = null;
         }
+        this.markSide('sideChips', this.editSide);
 
         const manual = team && team.manual;
         this.pick = {
@@ -795,10 +872,11 @@ class FieldSafetyTimer {
     // 팀 저장
     saveTeam() {
         const name = document.getElementById('teamName').value.trim();
-        // 배정 위치는 층 또는 구역 중 하나만 저장한다
+        // 배정 위치는 층(+방면) 또는 구역 중 하나만 저장한다
         const zoneMode = this.locMode === 'zone';
         const floor = zoneMode ? null : parseInt(document.getElementById('assignedFloor').value, 10) || null; // 지하는 음수
         const zone = zoneMode ? document.getElementById('assignedZone').value.trim() || null : null;
+        const side = zoneMode ? null : this.editSide || null;
 
         // 편성표에서 고른 차량과 진입 대원
         const p = this.pick;
@@ -863,6 +941,7 @@ class FieldSafetyTimer {
             team.name = name;
             team.floor = floor;
             team.zone = zone;
+            team.side = side;
             Object.assign(team, vehicleInfo);
             // 진입한 대가 위치를 바꾸면 '옮겨 간 것'으로 본다: 한 대는 한 곳에만 있다.
             // 공기호흡기는 계속 쓰고 있으므로 시간은 끊기지 않고 이어진다.
@@ -884,6 +963,7 @@ class FieldSafetyTimer {
                 name: name,
                 floor: floor,
                 zone: zone,
+                side: side,
                 ...vehicleInfo,
                 status: 'waiting',
                 entryTime: null
@@ -895,6 +975,181 @@ class FieldSafetyTimer {
         this.render();
         this.closeModal('teamModal');
         this.showToast('저장되었습니다.', 'success');
+    }
+
+    // ---------------------------------------------------------- 위치(층·구역) 바꾸기
+    // 카드의 층 버튼 → 지금 층 근처의 층을 크게 늘어놓고, 한 번 누르면 바뀌고 닫힌다
+    showLocModal(team) {
+        this.locTeam = team;
+        document.getElementById('locModalTitle').textContent = `${team.name} 위치`;
+        const inside = team.status !== 'waiting' && team.entryTime;
+        document.getElementById('locModalNow').innerHTML = team.floor || team.zone
+            ? `지금 <b>${escapeHtml(this.locationText(team))}</b>${inside ? ' · 바꾸면 옮겨 간 것으로 기록하고 시간은 이어집니다' : ''}`
+            : '배정 위치를 골라 주세요.';
+        document.getElementById('locFloorInput').value = '';
+        document.getElementById('locZoneInput').value = '';
+        this.locSide = team.zone ? null : team.side || null;
+        this.markSide('locSideChips', this.locSide);
+        this.renderLocPicks();
+        this.setLocPickMode(team.zone ? 'zone' : 'floor');
+        this.showModal('locModal');
+    }
+
+    // 지금 층(없으면 1층)을 가운데로 위아래 층 (0층은 없다, 지하10층 ~ 200층)
+    nearbyFloors(floor) {
+        const center = floor || 1;
+        const below = [], above = [];
+        for (let f = center - 1; f >= -10 && below.length < 4; f--) if (f !== 0) below.unshift(f);
+        for (let f = center + 1; f <= 200 && above.length < 4; f++) if (f !== 0) above.push(f);
+        return [...below, center, ...above].reverse(); // 높은 층이 위
+    }
+
+    renderLocPicks() {
+        const team = this.locTeam;
+        document.getElementById('locFloorGrid').innerHTML = this.nearbyFloors(team.floor).map(f => `
+            <button type="button" class="loc-pick ${!team.zone && team.floor === f ? 'active' : ''} ${f < 0 ? 'below' : ''}" data-floor="${f}">${this.floorText(f)}</button>`).join('');
+        // 구역은 이 현장에서 이미 쓴 이름들 (처음이면 직접 입력)
+        document.getElementById('locZoneGrid').innerHTML = this.recentZones().map(z => `
+            <button type="button" class="loc-pick ${team.zone === z ? 'active' : ''}" data-zone="${escapeHtml(z)}">${escapeHtml(z)}</button>`).join('');
+    }
+
+    setLocPickMode(mode) {
+        document.querySelectorAll('#locPickToggle button').forEach(b => b.classList.toggle('active', b.dataset.loc === mode));
+        document.getElementById('locPickFloor').hidden = mode !== 'floor';
+        document.getElementById('locPickZone').hidden = mode !== 'zone';
+    }
+
+    // 방면 버튼: 층이 이미 있으면 그 층 그대로 방면만 바로 바꾸고, 없으면 골라 두었다가 층을 누를 때 함께
+    pickLocSide(side) {
+        this.locSide = side || null;
+        this.markSide('locSideChips', this.locSide);
+        const team = this.locTeam;
+        if (team && team.floor && !team.zone) this.applyLocation(team.floor, null);
+    }
+
+    // 위치를 바꾼다. 진입한 대라면 '옮겨 간 것'으로 기록하고 시간은 끊지 않는다 (saveTeam 과 같은 규칙)
+    // 층에는 고른 방면(locSide)이 함께 붙는다
+    applyLocation(floor, zone) {
+        const team = this.locTeam;
+        if (!team) return;
+        if (floor && (floor < -10 || floor > 200)) {
+            this.showToast('배정층은 지하10층 ~ 200층 사이로 입력해 주세요.', 'error');
+            return;
+        }
+        if (!floor && !zone) {
+            this.showToast(document.getElementById('locPickZone').hidden ? '층을 골라 주세요.' : '구역을 골라 주세요.', 'error');
+            return;
+        }
+        const had = team.floor || team.zone;
+        const before = this.locationText(team);
+        team.floor = floor || null;
+        team.zone = zone || null;
+        team.side = team.zone ? null : this.locSide || null;
+        const after = this.locationText(team);
+        this.closeModal('locModal');
+        this.locTeam = null;
+        if (before === after) return;
+        if (had && team.status !== 'waiting' && team.entryTime) {
+            const elapsed = team.status === 'paused' ? team.pausedElapsed : Date.now() - team.entryTime;
+            team.moves = [...(team.moves || []), { from: before, to: after, at: Date.now() }];
+            this.addLog(team, `위치 이동 (${before} → ${after})`, elapsed);
+            this.showToast(`${team.name} ${before} → ${after} 이동 · 시간은 이어서 잽니다`, 'success');
+        } else {
+            this.showToast(`${team.name} 위치: ${after}`, 'success');
+        }
+        this.saveTeams();
+        this.render();
+    }
+
+    // ---------------------------------------------------------- 조 나누기 (2인1조)
+    // 한 대를 1조·2조로 나눈다. 같이 들어간 대원은 같은 시각부터 공기를 썼으므로
+    // 2조는 진입 시각·경과 시간·상태를 그대로 이어받는다 (처음부터 다시 세지 않는다)
+    showSplitModal(team) {
+        const base = this.splitBaseName(team.name);
+        this.split = { team, members: new Set(), floor: null, side: null };
+        document.getElementById('splitModalTitle').textContent = `${base} 조 나누기`;
+        const inside = team.status !== 'waiting' && team.entryTime;
+        document.getElementById('splitLead').innerHTML =
+            `지금 <b>${escapeHtml(this.locationText(team))}</b>${inside ? ` · 2조도 같은 진입 시각(${this.clockText(team.firstEntryAt || team.entryTime)})부터 이어서 잽니다` : ''}`;
+        const members = team.members || [];
+        document.getElementById('splitMembers').innerHTML = members.length
+            ? members.map(m => `<button type="button" class="loc-pick" data-member="${escapeHtml(m.name)}">${m.role === '대장' ? '⭐ ' : ''}${escapeHtml(m.name)}</button>`).join('')
+            : '<p class="roster-hint">이 대에는 대원 명단이 없습니다. 위치만 골라서 나눌 수 있습니다.</p>';
+        document.getElementById('splitFloorGrid').innerHTML = this.nearbyFloors(team.floor).map(f => `
+            <button type="button" class="loc-pick ${f < 0 ? 'below' : ''}" data-floor="${f}">${this.floorText(f)}</button>`).join('');
+        document.getElementById('splitFloorInput').value = '';
+        this.markSide('splitSideChips', null);
+        this.showModal('splitModal');
+    }
+
+    // "작전 펌프차 1조" → "작전 펌프차"
+    splitBaseName(name) {
+        return String(name).replace(/\s*\d+조$/, '');
+    }
+
+    applySplit() {
+        const s = this.split;
+        if (!s) return;
+        const team = s.team;
+        const members = team.members || [];
+        const moving = members.filter(m => s.members.has(m.name));
+        const staying = members.filter(m => !s.members.has(m.name));
+        if (members.length && !moving.length) {
+            this.showToast('2조로 갈 대원을 골라 주세요.', 'error');
+            return;
+        }
+        if (members.length && !staying.length) {
+            this.showToast('1조에 남을 대원이 있어야 합니다. 모두 옮기려면 위치만 바꾸세요.', 'error');
+            return;
+        }
+        if (!s.floor) {
+            this.showToast('2조 위치(층)를 골라 주세요.', 'error');
+            return;
+        }
+        if (s.floor < -10 || s.floor > 200) {
+            this.showToast('배정층은 지하10층 ~ 200층 사이로 입력해 주세요.', 'error');
+            return;
+        }
+
+        // 대장이 없는 쪽은 맨 앞 사람이 대장
+        const withLeader = (list) => list.some(m => m.role === '대장')
+            ? list.map(m => ({ ...m }))
+            : list.map((m, i) => ({ ...m, role: i === 0 ? '대장' : (m.role === '대장' ? '진압' : m.role) }));
+
+        // 이름: 처음 나누면 원래 대가 1조, 새 대가 2조. 이미 조가 있으면 다음 번호
+        const base = this.splitBaseName(team.name);
+        const used = this.teams.map(t => t.name.match(new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*(\\d+)조$`)))
+            .filter(Boolean).map(m => parseInt(m[1], 10));
+        if (!/\d+조$/.test(team.name)) {
+            team.name = `${base} 1조`;
+            used.push(1);
+        }
+        const next = Math.max(1, ...used) + 1;
+
+        const newTeam = {
+            ...team,
+            id: this.generateId(),
+            name: `${base} ${next}조`,
+            members: withLeader(moving),
+            floor: s.floor,
+            zone: null,
+            side: s.side || null,
+            moves: []
+        };
+        team.members = withLeader(staying);
+        const i = this.teams.indexOf(team);
+        this.teams.splice(i + 1, 0, newTeam);
+
+        const elapsed = team.entryTime && team.status !== 'waiting' ? this.teamElapsed(team) : null;
+        const where = this.locationText(newTeam);
+        this.addLog(team, `조 나누기 → ${next}조 (${where})`, elapsed);
+        this.addLog(newTeam, `${next}조 분리 (${where})`, elapsed);
+
+        this.split = null;
+        this.closeModal('splitModal');
+        this.saveTeams();
+        this.render();
+        this.showToast(`${team.name} / ${newTeam.name}(${where})로 나눴습니다${elapsed != null ? ' · 시간은 이어서 잽니다' : ''}`, 'success');
     }
 
     // 팀 삭제
@@ -1296,10 +1551,10 @@ ${missing.map(m => `· ${m}`).join('\n')}
             });
         }
 
-        // 삭제 버튼
-        const deleteBtn = card.querySelector('.btn-delete');
-        if (deleteBtn) {
-            deleteBtn.addEventListener('click', () => this.confirmDeleteTeam(team));
+        // 위치(층·구역) 버튼
+        const floorBtn = card.querySelector('.btn-floor');
+        if (floorBtn) {
+            floorBtn.addEventListener('click', () => this.showLocModal(team));
         }
 
         // 제어 버튼들
@@ -1542,8 +1797,26 @@ ${missing.map(m => `· ${m}`).join('\n')}
     }
 
     // 배정 위치: 구역이 있으면 구역, 없으면 층
+    // "3층 C방면" / "B동". 방면은 층에만 붙는다
     locationText(team) {
+        const side = !team.zone && team.side ? ` ${team.side}방면` : '';
+        return this.placeText(team) + side;
+    }
+
+    // 방면을 뺀 곳: 현황 보고는 층(또는 구역)별로 묶는다
+    placeText(team) {
         return team.zone || this.floorText(team.floor);
+    }
+
+    // 최근에 쓴 구역 이름 (지금 대 목록에서)
+    recentZones() {
+        return [...new Set(this.teams.map(t => t.zone).filter(Boolean))];
+    }
+
+    // 방면 버튼들 중 하나를 눌린 상태로
+    markSide(containerId, side) {
+        document.querySelectorAll(`#${containerId} button[data-side]`)
+            .forEach(b => b.classList.toggle('active', b.dataset.side === (side || '')));
     }
 
     setLocMode(mode) {
@@ -1733,9 +2006,17 @@ ${missing.map(m => `· ${m}`).join('\n')}
             .map(card => [card.dataset.teamId, card.getBoundingClientRect()]));
 
         const order = this.sortedTeams().filter(t => !this.filter || (t.status === this.filter && this.isUnit(t)));
+        // 목록 끝의 '+' 칸: 위쪽 '대 추가' 버튼과 같다 (손이 닿는 화면에서 바로 추가)
+        const addTile = this.filter ? '' : `
+            <button type="button" class="add-tile" aria-label="대 추가">
+                <span class="add-tile-plus" aria-hidden="true">+</span>
+                <span class="add-tile-text">대 추가</span>
+            </button>`;
         container.innerHTML = order.length
-            ? order.map(team => this.renderTeamCard(team)).join('')
+            ? order.map(team => this.renderTeamCard(team)).join('') + addTile
             : `<p class="filter-empty">${this.getStatusText(this.filter)} 상태인 대가 없습니다.</p>`;
+        const tile = container.querySelector('.add-tile');
+        if (tile) tile.addEventListener('click', () => this.showTeamModal());
         // 경고·위험이 되어 있던 카드끼리 자리가 바뀐 직후에는 누름을 잠깐 막는다 (옮겨 온 카드를 잘못 누르지 않게)
         // 대를 추가·삭제한 것만으로는 막지 않는다
         const kept = (ids) => ids.filter(id => before.has(id) && order.some(t => t.id === id)).join();
@@ -1814,22 +2095,29 @@ ${missing.map(m => `· ${m}`).join('\n')}
     // 진입 전: 착순 배지·대 이름·위치를 모두 왼쪽에 모아 둔다 (입력할 것이 한눈에)
     // 진입 후: [착순 배지 ··· 연필·휴지통] / [대 이름 ··· 위치] 로 양쪽에 나눈다
     renderTeamHead(team, badge) {
+        // 삭제는 편집 창 맨 아래에만 둔다 (카드에서 실수로 누르지 않게)
         const actions = `
             <div class="team-actions">
                 <button class="btn-small btn-edit" title="편집" aria-label="${escapeHtml(team.name)} 편집">${ICONS.edit}</button>
-                <button class="btn-small btn-delete" title="삭제" aria-label="${escapeHtml(team.name)} 삭제">${ICONS.trash}</button>
             </div>`;
-        const where = team.floor || team.zone ? `<span class="team-floor">${escapeHtml(this.locationText(team))}</span>` : '';
+        // 위치는 누르면 바로 바꿀 수 있는 버튼 (진입 중이면 '옮겨 감'으로 기록)
+        const hasLoc = team.floor || team.zone;
+        const where = hasLoc
+            ? `<button type="button" class="btn-floor" aria-label="${escapeHtml(team.name)} 위치 ${escapeHtml(this.locationText(team))} 바꾸기">
+                   <span class="team-floor">${escapeHtml(this.locationText(team))}</span><span class="btn-floor-chev" aria-hidden="true">▾</span></button>`
+            : `<button type="button" class="btn-floor btn-floor-missing" aria-label="${escapeHtml(team.name)} 위치 입력">
+                   <span>위치 입력</span><span class="btn-floor-chev" aria-hidden="true">▾</span></button>`;
         const noUnit = team.vehicle ? '' : '<span class="team-nounit">소속·차량 미선택</span>';
-        const noWhere = where ? '' : '<span class="team-nounit">위치 미입력</span>';
 
+        // 진입 전에 위치가 없으면 아무것도 띄우지 않는다 (진입 시작 때 빠진 것을 알려 준다)
         if (team.status === 'waiting') {
             return `
                 ${badge}
                 <div class="team-header">
                     <div class="team-info">
                         <h3>${escapeHtml(team.name)}</h3>
-                        <div class="team-sub">${where}${noUnit}${noWhere}</div>
+                        ${noUnit}
+                        ${hasLoc ? `<div class="team-sub">${where}</div>` : ''}
                     </div>
                     ${actions}
                 </div>`;
@@ -1844,7 +2132,7 @@ ${missing.map(m => `· ${m}`).join('\n')}
                     <h3>${escapeHtml(team.name)}</h3>
                     ${noUnit}
                 </div>
-                <div class="team-where">${where || noWhere}</div>
+                <div class="team-where">${where}</div>
             </div>`;
     }
 
@@ -1882,7 +2170,7 @@ ${missing.map(m => `· ${m}`).join('\n')}
         const inside = this.teams.filter(t => t.entryTime && t.status !== 'waiting');
         const groups = new Map();
         inside.forEach(t => {
-            const key = this.locationText(t);
+            const key = this.placeText(t); // 같은 층이면 방면이 달라도 한 묶음 (방면은 대마다 표시)
             if (!groups.has(key)) groups.set(key, { key, floor: t.zone ? null : t.floor, zone: t.zone, teams: [] });
             groups.get(key).teams.push(t);
         });
@@ -1916,6 +2204,7 @@ ${missing.map(m => `· ${m}`).join('\n')}
                     <div class="report-team-main">
                         ${arrival ? `<span class="arrival-badge" style="--c: ${Gauge.centerColor(this.settings.theme, this.arrivalOrder().indexOf(t.center))}"><b>${arrival}</b>${escapeHtml(this.unitLabel(t))}</span>` : ''}
                         <strong>${escapeHtml(t.name)}</strong>
+                        ${t.side && !t.zone ? `<span class="report-side">${t.side}방면</span>` : ''}
                         <span class="report-min">${Math.floor(this.teamElapsed(t) / 60000)}분</span>
                         <span class="status-badge status-${t.status}">${this.getStatusText(t.status)}</span>
                     </div>
@@ -1941,7 +2230,8 @@ ${missing.map(m => `· ${m}`).join('\n')}
             const leader = (t.members || []).find(m => m.role === '대장');
             const status = { danger: ', 위험', warning: ', 경고', paused: ', 일시정지' }[t.status] || '';
             const station = this.multiStation() && t.station ? `${this.shortStation(t.station)} ` : '';
-            return `${`${this.arrivalLabel(t)} ${station}${t.name}`.trim()}${leader ? `(대장 ${leader.name})` : ''} ${Math.floor(this.teamElapsed(t) / 60000)}분 경과${status}`;
+            const side = t.side && !t.zone ? ` ${t.side}방면` : '';
+            return `${`${this.arrivalLabel(t)} ${station}${t.name}`.trim()}${side}${leader ? `(대장 ${leader.name})` : ''} ${Math.floor(this.teamElapsed(t) / 60000)}분 경과${status}`;
         };
         document.getElementById('reportText').textContent = groups.length
             ? [`${this.clockText(now)} 현재 진입 ${groups.reduce((n, g) => n + g.teams.length, 0)}개 대${people ? ` ${people}명` : ''}입니다.`]
@@ -1994,6 +2284,8 @@ ${missing.map(m => `· ${m}`).join('\n')}
         // 경고·위험인 대가 있으면 칸 전체를 그 색으로
         document.getElementById('statusWarning').closest('.status-card').classList.toggle('has', counts.warning > 0);
         document.getElementById('statusDanger').closest('.status-card').classList.toggle('has', counts.danger > 0);
+        // 0인 칸은 숫자를 흐리게 (숫자가 있는 칸이 바로 보이게)
+        document.querySelectorAll('#statusOverview .status-card').forEach(c => c.classList.toggle('zero', !counts[c.dataset.filter]));
         document.querySelectorAll('#statusOverview .status-card').forEach(c => c.setAttribute('aria-pressed', c.dataset.filter === this.filter));
         const info = document.getElementById('filterInfo');
         info.hidden = !this.filter;

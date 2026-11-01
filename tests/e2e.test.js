@@ -222,6 +222,169 @@ test('여러 대가 경보여도 소리는 하나로 묶이고, 카드가 옮겨
     assert.deepEqual(page.errors, []);
 });
 
+test('층 버튼으로 위치 바꾸기(진입 중이면 이동 기록), + 칸으로 대 추가, 삭제는 편집 창에만', async () => {
+    const page = await openApp(browser);
+    await startWithDummy(page);
+    await addVehicle(page, '작전119안전센터', '펌프차', 3);
+    const card = async () => lastCard(page);
+    assert.equal(await (await card()).$('.btn-delete'), null, '카드에는 휴지통 없음');
+
+    // 진입 전: 층만 바뀌고 이동 기록은 없다
+    await (await card()).$eval('.btn-floor', (b) => b.click());
+    await sleep(300);
+    assert.ok(await isShown(page, 'locModal'));
+    const floors = await page.$$eval('#locFloorGrid [data-floor]', (bs) => bs.map((b) => b.textContent));
+    assert.ok(floors.includes('3층') && floors.includes('7층') && floors.includes('지하1층'), floors.join());
+    await click(page, '#locFloorGrid [data-floor="4"]');
+    await sleep(300);
+    assert.ok(!(await isShown(page, 'locModal')), '누르면 바로 닫힘');
+    assert.equal(await (await card()).$eval('.team-floor', (e) => e.textContent), '4층');
+
+    // 일시정지 중: 5층으로 옮기면 '위치 이동' 기록, 시간은 그대로
+    await (await card()).$eval('.btn-start', (b) => b.click());
+    await sleep(700);
+    await (await card()).$eval('.btn-pause', (b) => b.click());
+    await sleep(700);
+    const pausedAt = await page.evaluate(() => window.fieldSafetyTimer.teams.at(-1).pausedElapsed);
+    await (await card()).$eval('.btn-floor', (b) => b.click());
+    await sleep(300);
+    await click(page, '#locFloorGrid [data-floor="5"]');
+    await sleep(300);
+    const t = await page.evaluate(() => { const x = window.fieldSafetyTimer.teams.at(-1); return { floor: x.floor, paused: x.pausedElapsed, log: window.fieldSafetyTimer.logs.at(-1).type }; });
+    assert.equal(t.floor, 5);
+    assert.equal(t.paused, pausedAt, '시간은 이어짐');
+    assert.equal(t.log, '위치 이동 (4층 → 5층)');
+
+    // 방면: 층은 그대로 두고 방면만 바로 바꾼다 → "5층 C방면"
+    await (await card()).$eval('.btn-floor', (b) => b.click());
+    await sleep(300);
+    await click(page, '#locSideChips [data-side="C"]');
+    await sleep(300);
+    assert.ok(!(await isShown(page, 'locModal')));
+    assert.equal(await (await card()).$eval('.team-floor', (e) => e.textContent), '5층 C방면');
+    assert.equal(await page.evaluate(() => window.fieldSafetyTimer.logs.at(-1).type), '위치 이동 (5층 → 5층 C방면)');
+    // 방면을 둔 채 층만 바꾸면 방면이 따라간다
+    await (await card()).$eval('.btn-floor', (b) => b.click());
+    await sleep(300);
+    await click(page, '#locFloorGrid [data-floor="6"]');
+    await sleep(300);
+    assert.equal(await (await card()).$eval('.team-floor', (e) => e.textContent), '6층 C방면');
+    // 현황 보고는 층으로 묶고 방면은 대마다
+    await click(page, '#reportBtn');
+    await sleep(300);
+    assert.equal(await page.$eval('.report-floor h3', (e) => e.textContent), '6층');
+    assert.equal(await page.$eval('.report-side', (e) => e.textContent), 'C방면');
+    await click(page, '#closeReportModalBtn');
+    await sleep(200);
+    // 편집 창에도 방면이 눌려 있다
+    await (await card()).$eval('.btn-edit', (b) => b.click());
+    await sleep(300);
+    assert.equal(await page.$eval('#sideChips .active', (b) => b.dataset.side), 'C');
+    await click(page, '#cancelTeamBtn');
+    await sleep(200);
+    // 구역으로도
+    await (await card()).$eval('.btn-floor', (b) => b.click());
+    await sleep(300);
+    await click(page, '#locPickToggle [data-loc="zone"]');
+    await page.type('#locZoneInput', 'B동');
+    await click(page, '#locZoneApply');
+    await sleep(300);
+    assert.equal(await (await card()).$eval('.team-floor', (e) => e.textContent), 'B동');
+
+    // + 칸 → 대 추가 창
+    const before = await page.evaluate(() => window.fieldSafetyTimer.teams.length);
+    await click(page, '.add-tile');
+    await sleep(300);
+    assert.ok(await isShown(page, 'teamModal'));
+    assert.equal(await page.$eval('#teamModalTitle', (e) => e.textContent), '대 추가');
+    assert.ok(await page.$eval('#deleteTeamZone', (e) => e.hidden), '새 대는 삭제 버튼 없음');
+    await click(page, '#cancelTeamBtn');
+    await sleep(200);
+    assert.equal(await page.evaluate(() => window.fieldSafetyTimer.teams.length), before);
+
+    // 삭제는 편집 창 맨 아래
+    await (await card()).$eval('.btn-edit', (b) => b.click());
+    await sleep(300);
+    assert.ok(!(await page.$eval('#deleteTeamZone', (e) => e.hidden)));
+    await click(page, '#deleteTeamBtn');
+    await sleep(200);
+    assert.ok(await isShown(page, 'confirmDialog'), '삭제 전에 확인');
+    await click(page, '#confirmYes');
+    await sleep(300);
+    assert.equal(await page.evaluate(() => window.fieldSafetyTimer.teams.length), before - 1);
+    assert.deepEqual(page.errors, []);
+});
+
+test('조 나누기: 1조·2조로 나뉘고 2조는 진입 시각·상태를 이어받는다', async () => {
+    const page = await openApp(browser);
+    await startWithDummy(page);
+    await page.evaluate(() => {
+        const app = window.fieldSafetyTimer;
+        const t = app.teams[0];
+        Object.assign(t, {
+            name: '작전 펌프차', station: app.rosters[0].station, center: '작전119안전센터', vehicle: '펌프차', floor: 4,
+            members: [{ name: '여정훈', role: '대장' }, { name: '김가람', role: '진압' }, { name: '이나래', role: '진압' }, { name: '박다솜', role: '진압' }],
+            status: 'warning', entryTime: Date.now() - 33 * 60000, firstEntryAt: Date.now() - 33 * 60000
+        });
+        app.saveTeams(); app.render();
+    });
+    const id = await page.evaluate(() => window.fieldSafetyTimer.teams[0].id);
+    await page.$eval(`[data-team-id="${id}"] .btn-edit`, (b) => b.click());
+    await sleep(300);
+    await click(page, '#splitTeamBtn');
+    await sleep(300);
+    assert.ok(await isShown(page, 'splitModal'));
+
+    // 아무도 안 고르면 안 나뉨
+    await page.$eval('#splitFloorGrid [data-floor="3"]', (b) => b.click());
+    await click(page, '#splitApplyBtn');
+    await sleep(200);
+    assert.ok(await isShown(page, 'splitModal'), '대원을 골라야 함');
+
+    await click(page, '#splitMembers [data-member="이나래"]');
+    await click(page, '#splitMembers [data-member="박다솜"]');
+    await click(page, '#splitSideChips [data-side="B"]');
+    await click(page, '#splitApplyBtn');
+    await sleep(400);
+    assert.ok(!(await isShown(page, 'splitModal')));
+
+    const teams = await page.evaluate(() => window.fieldSafetyTimer.teams.slice(0, 2).map((t) => ({
+        name: t.name, floor: t.floor, side: t.side, status: t.status, entryTime: t.entryTime, firstEntryAt: t.firstEntryAt,
+        members: t.members.map((m) => (m.role === '대장' ? '⭐' : '') + m.name)
+    })));
+    assert.equal(teams[0].name, '작전 펌프차 1조');
+    assert.deepEqual(teams[0].members, ['⭐여정훈', '김가람']);
+    assert.equal(teams[0].floor, 4);
+    assert.equal(teams[1].name, '작전 펌프차 2조');
+    assert.deepEqual(teams[1].members, ['⭐이나래', '박다솜'], '대장이 없으면 맨 앞 사람이 대장');
+    assert.equal(teams[1].floor, 3);
+    assert.equal(teams[1].side, 'B');
+    assert.equal(teams[1].status, 'warning', '상태 이어받음');
+    assert.equal(teams[1].entryTime, teams[0].entryTime, '진입 시각 이어받음');
+    assert.equal(teams[1].firstEntryAt, teams[0].firstEntryAt);
+
+    // 카드 두 개, 착순 같음, 2조 카드도 경고 색
+    const cards = await page.$$eval('.team-card', (cs) => cs.map((c) => ({ name: c.querySelector('h3').textContent, cls: c.className, floor: c.querySelector('.team-floor')?.textContent })));
+    const two = cards.find((c) => c.name === '작전 펌프차 2조');
+    assert.match(two.cls, /status-warning/);
+    assert.equal(two.floor, '3층 B방면');
+    const logs = await page.evaluate(() => window.fieldSafetyTimer.logs.slice(-2).map((l) => l.type));
+    assert.deepEqual(logs, ['조 나누기 → 2조 (3층 B방면)', '2조 분리 (3층 B방면)']);
+
+    // 1조를 한 번 더 나누면 3조
+    await page.$eval(`[data-team-id="${id}"] .btn-edit`, (b) => b.click());
+    await sleep(300);
+    await click(page, '#splitTeamBtn');
+    await sleep(300);
+    await click(page, '#splitMembers [data-member="김가람"]');
+    await page.$eval('#splitFloorGrid [data-floor="5"]', (b) => b.click());
+    await click(page, '#splitApplyBtn');
+    await sleep(400);
+    const names = await page.evaluate(() => window.fieldSafetyTimer.teams.slice(0, 3).map((t) => t.name));
+    assert.deepEqual(names, ['작전 펌프차 1조', '작전 펌프차 3조', '작전 펌프차 2조']);
+    assert.deepEqual(page.errors, []);
+});
+
 test('경고·위험인 대만 위로 오고, 나머지는 등록한 순서 그대로', async () => {
     const page = await openApp(browser);
     await startWithDummy(page);
@@ -295,11 +458,11 @@ test('넓은 1층 현장은 층 대신 구역으로 배정하고, 기록에도 �
     await click(page, '[data-vehicle="펌프차"]');
     await click(page, '#locToggle [data-loc="zone"]');
     assert.ok(await page.$eval('#locFloor', (e) => e.hidden), '구역을 고르면 층 입력은 숨김');
-    await click(page, '#zoneChips [data-zone="후면"]');
+    await page.type('#assignedZone', '물류창고');
     await click(page, '#saveTeamBtn');
     await sleep(300);
     const card = await lastCard(page);
-    assert.equal(await card.$eval('.team-floor', (e) => e.textContent), '후면');
+    assert.equal(await card.$eval('.team-floor', (e) => e.textContent), '물류창고');
     await card.$eval('.btn-start', (b) => b.click());
     await sleep(300);
     assert.equal(await page.evaluate(() => window.fieldSafetyTimer.teams.at(-1).floor), null);
@@ -307,7 +470,7 @@ test('넓은 1층 현장은 층 대신 구역으로 배정하고, 기록에도 �
     // 다시 열면 구역 탭과 값이 그대로, 직접 입력도 된다
     await (await lastCard(page)).$eval('.btn-edit', (b) => b.click());
     await sleep(300);
-    assert.equal(await page.$eval('#assignedZone', (e) => e.value), '후면');
+    assert.equal(await page.$eval('#assignedZone', (e) => e.value), '물류창고');
     await page.$eval('#assignedZone', (e) => { e.value = ''; });
     await page.type('#assignedZone', 'B동');
     await click(page, '#saveTeamBtn');
@@ -319,8 +482,8 @@ test('넓은 1층 현장은 층 대신 구역으로 배정하고, 기록에도 �
     await sleep(200);
     // 진입한 뒤 구역을 바꾸면 옮겨 간 것으로 기록된다 (맨 위가 최신)
     const logs = await page.$$eval('.log-item', (es) => es.map((e) => e.textContent.replace(/\s+/g, ' ')));
-    assert.match(logs[0], /1착 계산 펌프차 · B동 위치 이동 \(후면 → B동\)/);
-    assert.match(logs[1], /1착 계산 펌프차 · 후면 진입 시작/);
+    assert.match(logs[0], /1착 계산 펌프차 · B동 위치 이동 \(물류창고 → B동\)/);
+    assert.match(logs[1], /1착 계산 펌프차 · 물류창고 진입 시작/);
     assert.deepEqual(page.errors, []);
 });
 
@@ -334,7 +497,8 @@ test('소속·차량·배정 위치가 없는 대는 진입 시작이 안 되고
     const notice = await page.$eval('#unitRequiredMessage', (e) => e.textContent);
     assert.match(notice, /소속\(안전센터\)·차량/);
     assert.match(notice, /배정 위치/);
-    assert.deepEqual(await page.$$eval('.team-card:first-child .team-nounit', (es) => es.map((e) => e.textContent)), ['소속·차량 미선택', '위치 미입력']);
+    assert.deepEqual(await page.$$eval('.team-card:first-child .team-nounit', (es) => es.map((e) => e.textContent)), ['소속·차량 미선택']);
+    assert.equal(await page.$('.team-card:first-child .btn-floor'), null, '진입 전에는 위치 입력 버튼 없음');
 
     // 입력하러 가기 → 소속·차량만 고르고 위치를 비우면 저장되지 않는다
     await click(page, '#unitRequiredPick');
@@ -578,7 +742,9 @@ test('진입 대원을 아무도 체크하지 않으면 시작 안 됨, 경고 �
         app.render();
     });
     const id = await page.evaluate(() => window.fieldSafetyTimer.teams[0].id);
-    await page.$eval(`[data-team-id="${id}"] .btn-delete`, (b) => b.click());
+    await page.$eval(`[data-team-id="${id}"] .btn-edit`, (b) => b.click());
+    await sleep(300);
+    await click(page, '#deleteTeamBtn');
     await sleep(300);
     assert.match(await page.$eval('#confirmMessage', (e) => e.textContent), /아직 진입 중입니다/);
     await click(page, '#confirmYes');
