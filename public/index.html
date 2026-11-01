@@ -291,6 +291,7 @@
                 <!-- 2인1조로 따로 활동: 한 대를 1조·2조 타이머로 나눈다 -->
                 <div class="split-zone" id="splitTeamZone" hidden>
                     <button id="splitTeamBtn" class="btn btn-secondary">✂ 조 나누기 (1조·2조)</button>
+                    <button id="undoSplitBtn" class="btn btn-secondary" hidden>↩ 나누기 취소 (다른 조로 합치기)</button>
                 </div>
                 <!-- 삭제는 카드에서 빼고 편집 창 맨 아래에만 (실수로 누르지 않게) -->
                 <div class="danger-zone" id="deleteTeamZone" hidden>
@@ -388,6 +389,8 @@
                     <button id="clearLogBtn" class="btn btn-secondary">기록 지우기</button>
                 </div>
                 <div id="logList" class="log-list"></div>
+                <!-- 새 현장을 시작하며 비운 기록 (최근 5개 현장) -->
+                <div id="pastLogs" class="past-logs" hidden></div>
             </div>
         </div>
     </div>

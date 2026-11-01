@@ -59,6 +59,7 @@ class FieldSafetyTimer {
             this.rosters.forEach(r => { r.station = r.station || this.stationOf(r); });
             this.logs = await loadData('logs', []);
             this.arrivals = await loadData('arrivals', []);
+            this.pastIncidents = await loadData('pastIncidents', []);
 
             this.teams = savedTeams;
             this.settings = { ...this.settings, ...savedSettings };
@@ -75,31 +76,21 @@ class FieldSafetyTimer {
             this.resumePending = this.teams.some(t => t.entryTime && t.status !== 'waiting');
             if (!this.resumePending) this.clearIncident();
 
-            // 기본 팀들이 없으면 생성
-            if (this.teams.length === 0) {
-                this.teams = this.defaultTeams();
-                this.saveTeams();
-            }
         } catch (error) {
             console.error('데이터 로드 실패:', error);
         }
     }
 
-    defaultTeams() {
-        return [1, 2, 3].map(i => ({
-            id: this.generateId(),
-            name: `${i}착대`,
-            floor: null,
-            status: 'waiting', // waiting, active, warning, danger, paused
-            entryTime: null
-        }));
-    }
-
-    // 현장 기록 비우기: 대 목록(기본 3개로)·활동 기록·착순
+    // 현장 기록 비우기: 대 목록(빈 목록, '+ 대 추가' 칸에서 시작)·활동 기록·착순
+    // 지운 현장의 활동 기록은 '지난 현장 기록'으로 최근 5개까지 남겨 둔다 (나중에 내려받을 수 있게)
     clearIncident() {
         this.stopAllAlarms();
         this.timers.clear();
-        this.teams = this.defaultTeams();
+        if (this.logs.length) {
+            this.pastIncidents = [{ at: this.logs[0].at, logs: this.logs }, ...(this.pastIncidents || [])].slice(0, 5);
+            saveData('pastIncidents', this.pastIncidents);
+        }
+        this.teams = [];
         this.logs = [];
         this.arrivals = [];
         this.filter = null;
@@ -219,6 +210,11 @@ class FieldSafetyTimer {
         document.getElementById('showLogBtn').addEventListener('click', () => this.showLogModal());
         document.getElementById('closeLogModalBtn').addEventListener('click', () => this.closeModal('logModal'));
         document.getElementById('exportLogBtn').addEventListener('click', () => this.exportLogs());
+        document.getElementById('pastLogs').addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-past]');
+            const past = btn && (this.pastIncidents || [])[+btn.dataset.past];
+            if (past) this.exportLogs(past.logs);
+        });
         document.getElementById('clearLogBtn').addEventListener('click', () => {
             this.showConfirmDialog('활동 기록을 모두 지우시겠습니까?', () => {
                 this.logs = [];
@@ -282,6 +278,9 @@ class FieldSafetyTimer {
             if (!team) return;
             this.closeModal('teamModal');
             this.showSplitModal(team);
+        });
+        document.getElementById('undoSplitBtn').addEventListener('click', () => {
+            if (this.currentEditingTeam) this.undoSplit(this.currentEditingTeam);
         });
         document.getElementById('closeSplitModalBtn').addEventListener('click', () => this.closeModal('splitModal'));
         document.getElementById('splitCancelBtn').addEventListener('click', () => this.closeModal('splitModal'));
@@ -454,7 +453,13 @@ class FieldSafetyTimer {
             .map(z => `<button type="button" class="chip" data-zone="${escapeHtml(z)}">${escapeHtml(z)}</button>`).join('');
 
         if (team) {
-            title.textContent = '대 편집';
+            // 대장 이름은 카드에 없으므로 편집 창 제목에 (무전 호출용)
+            const leader = (team.members || []).find(m => m.role === '대장');
+            title.textContent = leader ? `대 편집 · 대장 ${leader.name}` : '대 편집';
+            const sibling = this.splitSiblings(team)[0];
+            const undo = document.getElementById('undoSplitBtn');
+            undo.hidden = !sibling;
+            if (sibling) undo.textContent = `↩ 나누기 취소 (${sibling.name}(으)로 합치기)`;
             nameInput.value = team.name;
             floorInput.value = team.floor || '';
             document.getElementById('assignedZone').value = team.zone || '';
@@ -1066,7 +1071,8 @@ class FieldSafetyTimer {
     // 2조는 진입 시각·경과 시간·상태를 그대로 이어받는다 (처음부터 다시 세지 않는다)
     showSplitModal(team) {
         const base = this.splitBaseName(team.name);
-        this.split = { team, members: new Set(), floor: null, side: null };
+        // 2조는 같은 층의 다른 방면으로 가는 경우가 많으므로 지금 층을 미리 골라 둔다
+        this.split = { team, members: new Set(), floor: team.zone ? null : team.floor || null, side: null };
         document.getElementById('splitModalTitle').textContent = `${base} 조 나누기`;
         const inside = team.status !== 'waiting' && team.entryTime;
         document.getElementById('splitLead').innerHTML =
@@ -1076,7 +1082,7 @@ class FieldSafetyTimer {
             ? members.map(m => `<button type="button" class="loc-pick" data-member="${escapeHtml(m.name)}">${m.role === '대장' ? '⭐ ' : ''}${escapeHtml(m.name)}</button>`).join('')
             : '<p class="roster-hint">이 대에는 대원 명단이 없습니다. 위치만 골라서 나눌 수 있습니다.</p>';
         document.getElementById('splitFloorGrid').innerHTML = this.nearbyFloors(team.floor).map(f => `
-            <button type="button" class="loc-pick ${f < 0 ? 'below' : ''}" data-floor="${f}">${this.floorText(f)}</button>`).join('');
+            <button type="button" class="loc-pick ${f < 0 ? 'below' : ''} ${f === this.split.floor ? 'active' : ''}" data-floor="${f}">${this.floorText(f)}</button>`).join('');
         document.getElementById('splitFloorInput').value = '';
         this.markSide('splitSideChips', null);
         this.showModal('splitModal');
@@ -1085,6 +1091,38 @@ class FieldSafetyTimer {
     // "작전 펌프차 1조" → "작전 펌프차"
     splitBaseName(name) {
         return String(name).replace(/\s*\d+조$/, '');
+    }
+
+    // 같은 대에서 나뉜 다른 조들 (번호 순)
+    splitSiblings(team) {
+        if (!/\d+조$/.test(team.name)) return [];
+        const base = this.splitBaseName(team.name);
+        const num = (t) => parseInt(t.name.match(/(\d+)조$/)[1], 10);
+        return this.teams
+            .filter(t => t !== team && /\d+조$/.test(t.name) && this.splitBaseName(t.name) === base && t.center === team.center && t.vehicle === team.vehicle)
+            .sort((a, b) => num(a) - num(b));
+    }
+
+    // 나누기 취소: 이 조의 대원을 다른 조(번호가 가장 낮은 조)로 돌려보내고 이 조 카드를 없앤다.
+    // 받는 조의 시간은 그대로 (나눌 때 같은 진입 시각을 이어받았으므로)
+    undoSplit(team) {
+        const target = this.splitSiblings(team)[0];
+        if (!target) return;
+        const back = (team.members || []).map(m => ({ ...m, role: m.role === '대장' ? '진압' : m.role }))
+            .filter(m => !(target.members || []).some(x => x.name === m.name));
+        this.showConfirmDialog(`${team.name} 대원(${(team.members || []).map(m => m.name).join(', ') || '없음'})을 ${target.name}(으)로 돌려보내고\n${team.name} 카드를 없앨까요?`, () => {
+            const elapsed = team.entryTime && team.status !== 'waiting' ? this.teamElapsed(team) : null;
+            target.members = [...(target.members || []), ...back];
+            this.addLog(team, `${target.name}(으)로 합침 (나누기 취소)`, elapsed);
+            this.teams = this.teams.filter(t => t !== team);
+            this.stopAlarm(team.id);
+            // 조가 하나만 남으면 원래 이름으로
+            if (!this.splitSiblings(target).length) target.name = this.splitBaseName(target.name);
+            this.saveTeams();
+            this.render();
+            this.closeModal('teamModal');
+            this.showToast(`${target.name}(으)로 합쳤습니다.`, 'success');
+        });
     }
 
     applySplit() {
@@ -1736,7 +1774,27 @@ ${missing.map(m => `· ${m}`).join('\n')}
         this.showModal('logModal');
     }
 
+    // 지난 현장 기록: 새 현장을 시작하며 비운 기록을 내려받을 수 있게
+    renderPastLogs() {
+        const box = document.getElementById('pastLogs');
+        const past = this.pastIncidents || [];
+        box.hidden = !past.length;
+        box.innerHTML = past.length ? `
+            <h3>지난 현장 기록</h3>
+            <p class="roster-hint">새 현장을 시작하면서 비운 기록입니다. 최근 5개 현장까지 이 기기에 남아 있습니다.</p>
+            ${past.map((p, i) => `
+                <button type="button" class="btn btn-secondary past-log" data-past="${i}">
+                    ${this.dateText(p.at)} ${this.clockText(p.at)} 현장 · ${p.logs.length}건 내려받기
+                </button>`).join('')}` : '';
+    }
+
+    dateText(ms) {
+        const d = new Date(ms);
+        return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+    }
+
     renderLogs() {
+        this.renderPastLogs();
         const list = document.getElementById('logList');
         if (!this.logs.length) {
             list.innerHTML = '<p class="roster-hint">아직 기록이 없습니다. 진입 시작·일시정지·경고·위험·초기화가 자동으로 기록됩니다.</p>';
@@ -1752,15 +1810,15 @@ ${missing.map(m => `· ${m}`).join('\n')}
         `).join('');
     }
 
-    // 엑셀에서 바로 열리는 CSV 로 내보낸다
-    exportLogs() {
-        if (!this.logs.length) {
+    // 엑셀에서 바로 열리는 CSV 로 내보낸다 (지난 현장 기록도 같은 모양으로)
+    exportLogs(logs = this.logs) {
+        if (!logs.length) {
             this.showToast('내보낼 기록이 없습니다.', 'warning');
             return;
         }
         const cell = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
         const rows = [['날짜', '시각', '소방서', '출동대', '착순', '대명', '내용', '경과(분:초)', '진입 대원(⭐대장)', '배정 위치']]
-            .concat(this.logs.map(l => {
+            .concat(logs.map(l => {
                 const d = new Date(l.at);
                 return [
                     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
@@ -1769,7 +1827,7 @@ ${missing.map(m => `· ${m}`).join('\n')}
                 ];
             }));
         const csv = '\ufeff' + rows.map(r => r.map(cell).join(',')).join('\r\n');
-        const d = new Date();
+        const d = new Date(logs === this.logs ? Date.now() : logs[0].at);
         const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}_${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -1992,12 +2050,7 @@ ${missing.map(m => `· ${m}`).join('\n')}
         const container = document.getElementById('teamsList');
         const emptyState = document.getElementById('emptyState');
 
-        if (this.teams.length === 0) {
-            container.style.display = 'none';
-            emptyState.style.display = 'block';
-            return;
-        }
-
+        // 대가 하나도 없어도 '+ 대 추가' 칸은 보인다
         container.style.display = 'grid';
         emptyState.style.display = 'none';
 
@@ -2012,7 +2065,7 @@ ${missing.map(m => `· ${m}`).join('\n')}
                 <span class="add-tile-plus" aria-hidden="true">+</span>
                 <span class="add-tile-text">대 추가</span>
             </button>`;
-        container.innerHTML = order.length
+        container.innerHTML = order.length || !this.filter
             ? order.map(team => this.renderTeamCard(team)).join('') + addTile
             : `<p class="filter-empty">${this.getStatusText(this.filter)} 상태인 대가 없습니다.</p>`;
         const tile = container.querySelector('.add-tile');
@@ -2093,19 +2146,17 @@ ${missing.map(m => `· ${m}`).join('\n')}
 
     // 카드 윗부분.
     // 진입 전: 착순 배지·대 이름·위치를 모두 왼쪽에 모아 둔다 (입력할 것이 한눈에)
-    // 진입 후: [착순 배지 ··· 연필·휴지통] / [대 이름 ··· 위치] 로 양쪽에 나눈다
+    // 진입 후: 왼쪽 [착순 배지 / 대 이름], 오른쪽 [편집 / 위치] — 오른쪽 두 버튼은 같은 크기·글꼴·테두리로 줄을 맞춘다
     renderTeamHead(team, badge) {
         // 삭제는 편집 창 맨 아래에만 둔다 (카드에서 실수로 누르지 않게)
-        const actions = `
-            <div class="team-actions">
-                <button class="btn-small btn-edit" title="편집" aria-label="${escapeHtml(team.name)} 편집">${ICONS.edit}</button>
-            </div>`;
+        const edit = `<button class="btn-head btn-edit" title="편집" aria-label="${escapeHtml(team.name)} 편집">${ICONS.edit}<span>편집</span></button>`;
+        const actions = `<div class="team-actions">${edit}</div>`;
         // 위치는 누르면 바로 바꿀 수 있는 버튼 (진입 중이면 '옮겨 감'으로 기록)
         const hasLoc = team.floor || team.zone;
         const where = hasLoc
-            ? `<button type="button" class="btn-floor" aria-label="${escapeHtml(team.name)} 위치 ${escapeHtml(this.locationText(team))} 바꾸기">
+            ? `<button type="button" class="btn-head btn-floor" aria-label="${escapeHtml(team.name)} 위치 ${escapeHtml(this.locationText(team))} 바꾸기">
                    <span class="team-floor">${escapeHtml(this.locationText(team))}</span><span class="btn-floor-chev" aria-hidden="true">▾</span></button>`
-            : `<button type="button" class="btn-floor btn-floor-missing" aria-label="${escapeHtml(team.name)} 위치 입력">
+            : `<button type="button" class="btn-head btn-floor btn-floor-missing" aria-label="${escapeHtml(team.name)} 위치 입력">
                    <span>위치 입력</span><span class="btn-floor-chev" aria-hidden="true">▾</span></button>`;
         const noUnit = team.vehicle ? '' : '<span class="team-nounit">소속·차량 미선택</span>';
 
@@ -2123,16 +2174,14 @@ ${missing.map(m => `· ${m}`).join('\n')}
                 </div>`;
         }
         return `
-            <div class="team-top">
-                <div class="team-top-left">${badge}</div>
-                ${actions}
-            </div>
-            <div class="team-title">
+            <div class="team-head">
+                <div class="team-head-badge">${badge}</div>
+                ${edit}
                 <div class="team-info">
                     <h3>${escapeHtml(team.name)}</h3>
                     ${noUnit}
                 </div>
-                <div class="team-where">${where}</div>
+                ${where}
             </div>`;
     }
 
@@ -2207,6 +2256,7 @@ ${missing.map(m => `· ${m}`).join('\n')}
                         ${t.side && !t.zone ? `<span class="report-side">${t.side}방면</span>` : ''}
                         <span class="report-min">${Math.floor(this.teamElapsed(t) / 60000)}분</span>
                         <span class="status-badge status-${t.status}">${this.getStatusText(t.status)}</span>
+                        ${this.isAlarmMuted(t) ? '<span class="report-muted">🔕 경보 정지</span>' : ''}
                     </div>
                     <div class="report-team-sub">
                         ${this.clockText(t.firstEntryAt || t.entryTime)} 진입${leader ? ` · 대장 ${escapeHtml(leader.name)}` : ''}${(t.members || []).length ? ` · ${t.members.length}명` : ''}
@@ -2228,7 +2278,8 @@ ${missing.map(m => `· ${m}`).join('\n')}
         // 그대로 읽으면 되는 보고 문장
         const say = (t) => {
             const leader = (t.members || []).find(m => m.role === '대장');
-            const status = { danger: ', 위험', warning: ', 경고', paused: ', 일시정지' }[t.status] || '';
+            const status = ({ danger: ', 위험', warning: ', 경고', paused: ', 일시정지' }[t.status] || '')
+                + (this.isAlarmMuted(t) ? ' 경보 정지' : '');
             const station = this.multiStation() && t.station ? `${this.shortStation(t.station)} ` : '';
             const side = t.side && !t.zone ? ` ${t.side}방면` : '';
             return `${`${this.arrivalLabel(t)} ${station}${t.name}`.trim()}${side}${leader ? `(대장 ${leader.name})` : ''} ${Math.floor(this.teamElapsed(t) / 60000)}분 경과${status}`;
@@ -2376,6 +2427,7 @@ ${missing.map(m => `· ${m}`).join('\n')}
         this.teams = [];
         this.rosters = [];
         this.logs = [];
+        this.pastIncidents = [];
         this.arrivals = [];
         this.timers.clear();
         clearAllData();

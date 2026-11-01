@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
-const { sleep, launch, openApp, click, isShown, startWithDummy, addVehicle, lastCard } = require('./browser');
+const { sleep, launch, openApp, click, isShown, startWithDummy, addVehicle, lastCard, blankTeams } = require('./browser');
 
 const SAMPLE_XLSX = path.join(__dirname, '..', 'public', 'samples', 'roster-sample.xlsx');
 let browser;
@@ -182,7 +182,13 @@ test('태블릿처럼 기기 알림이 오류를 내도 카드 색이 바뀌고,
     assert.match(muted.cls, /status-danger/);
     assert.equal(muted.anim, 'none', '카드 깜빡임 멈춤');
     assert.equal(muted.bg, 'rgb(212, 42, 32)', '빨강 그대로');
-
+    // 현황 보고에도 경보 정지가 보인다
+    await click(page, '#reportBtn');
+    await sleep(300);
+    assert.match(await page.$eval('.report-muted', (e) => e.textContent), /경보 정지/);
+    assert.match(await page.$eval('#reportText', (e) => e.textContent), /위험 경보 정지/);
+    await click(page, '#closeReportModalBtn');
+    await sleep(200);
     // 일시정지해도 상태 색은 그대로, 초기화 버튼은 일시정지 때만 (같은 카드 두 번 누름 방지 0.6초가 지난 뒤)
     await sleep(400);
     await (await card()).$eval('.btn-pause', (b) => b.click());
@@ -318,6 +324,7 @@ test('층 버튼으로 위치 바꾸기(진입 중이면 이동 기록), + 칸�
 test('조 나누기: 1조·2조로 나뉘고 2조는 진입 시각·상태를 이어받는다', async () => {
     const page = await openApp(browser);
     await startWithDummy(page);
+    await blankTeams(page);
     await page.evaluate(() => {
         const app = window.fieldSafetyTimer;
         const t = app.teams[0];
@@ -382,12 +389,36 @@ test('조 나누기: 1조·2조로 나뉘고 2조는 진입 시각·상태를 �
     await sleep(400);
     const names = await page.evaluate(() => window.fieldSafetyTimer.teams.slice(0, 3).map((t) => t.name));
     assert.deepEqual(names, ['작전 펌프차 1조', '작전 펌프차 3조', '작전 펌프차 2조']);
-    assert.deepEqual(page.errors, []);
+
+    // 편집 창 제목에 대장 이름, 나누기 취소 → 대원이 번호가 가장 낮은 조로 돌아간다
+    const id3 = await page.evaluate(() => window.fieldSafetyTimer.teams[1].id);
+    await page.$eval(`[data-team-id="${id3}"] .btn-edit`, (b) => b.click());
+    await sleep(300);
+    assert.equal(await page.$eval('#teamModalTitle', (e) => e.textContent), '대 편집 · 대장 김가람');
+    assert.match(await page.$eval('#undoSplitBtn', (e) => e.textContent), /작전 펌프차 1조/);
+    await click(page, '#undoSplitBtn');
+    await sleep(200);
+    await click(page, '#confirmYes');
+    await sleep(400);
+    const after = await page.evaluate(() => window.fieldSafetyTimer.teams.slice(0, 2).map((t) => ({ name: t.name, members: t.members.map((m) => (m.role === '대장' ? '⭐' : '') + m.name) })));
+    assert.deepEqual(after[0], { name: '작전 펌프차 1조', members: ['⭐여정훈', '김가람'] });
+    assert.equal(after[1].name, '작전 펌프차 2조');
+    // 2조도 합치면 조가 하나만 남으므로 원래 이름으로
+    const id2 = await page.evaluate(() => window.fieldSafetyTimer.teams[1].id);
+    await page.$eval(`[data-team-id="${id2}"] .btn-edit`, (b) => b.click());
+    await sleep(300);
+    await click(page, '#undoSplitBtn');
+    await sleep(200);
+    await click(page, '#confirmYes');
+    await sleep(400);
+    const one = await page.evaluate(() => { const t = window.fieldSafetyTimer.teams[0]; return { name: t.name, n: t.members.length, next: window.fieldSafetyTimer.teams[1].name }; });
+    assert.deepEqual(one, { name: '작전 펌프차', n: 4, next: '2착대' });    assert.deepEqual(page.errors, []);
 });
 
 test('경고·위험인 대만 위로 오고, 나머지는 등록한 순서 그대로', async () => {
     const page = await openApp(browser);
     await startWithDummy(page);
+    await blankTeams(page);
     await addVehicle(page, '계산119안전센터', '펌프차', 2);
     await addVehicle(page, '작전119안전센터', '펌프차', 3);
     await addVehicle(page, '계양119구조대', '구조차', 4);
@@ -410,6 +441,7 @@ test('경고·위험인 대만 위로 오고, 나머지는 등록한 순서 그�
 test('진입·일시정지·이어서 시작은 카드 자리를 바꾸지 않고, 누른 카드만 움직인다', async () => {
     const page = await openApp(browser);
     await startWithDummy(page);
+    await blankTeams(page);
     // 1~3착대에 소속·차량을 넣어 둔다 (없으면 진입 시작이 안 된다)
     await page.evaluate(() => {
         const app = window.fieldSafetyTimer;
@@ -490,6 +522,7 @@ test('넓은 1층 현장은 층 대신 구역으로 배정하고, 기록에도 �
 test('소속·차량·배정 위치가 없는 대는 진입 시작이 안 되고 안내 창이 뜬다', async () => {
     const page = await openApp(browser);
     await startWithDummy(page);
+    await blankTeams(page);
     await page.$eval('.team-card .btn-start', (b) => b.click());
     await sleep(300);
     assert.ok(await isShown(page, 'unitRequiredDialog'));
@@ -525,6 +558,7 @@ test('소속·차량·배정 위치가 없는 대는 진입 시작이 안 되고
 test('착순: 먼저 진입한 센터가 1착, 같은 센터 대는 같은 색이고 초기화해도 그대로', async () => {
     const page = await openApp(browser);
     await startWithDummy(page);
+    await blankTeams(page);
     await page.evaluate(() => {
         const app = window.fieldSafetyTimer;
         const set = [['계산119안전센터', 5], ['작전119안전센터', 9], ['작전119안전센터', 0]];
@@ -563,6 +597,7 @@ test('착순: 먼저 진입한 센터가 1착, 같은 센터 대는 같은 색�
 test('카드 정렬: 등록 순서 / 센터별 묶기 / 오래된 순, 위험·경고는 항상 위, 다시 열어도 유지', async () => {
     const page = await openApp(browser);
     await startWithDummy(page);
+    await blankTeams(page);
     // 등록: 작전 펌프차(5분), 계산 펌프차(9분), 작전 화학차(2분) → 착순 1착 계산, 2착 작전
     await page.evaluate(() => {
         const app = window.fieldSafetyTimer;
@@ -650,6 +685,7 @@ test('설정에서 압력계 톤 5가지 중 고르고 저장해야 바뀌고, �
 test('상황판 상태를 누르면 그 상태인 대만 보이고, 다시 누르면 전체', async () => {
     const page = await openApp(browser);
     await startWithDummy(page);
+    await blankTeams(page);
     await page.evaluate(() => {
         const app = window.fieldSafetyTimer;
         app.teams.forEach((t) => { t.center = '작전119안전센터'; t.vehicle = '펌프차'; });
@@ -674,6 +710,7 @@ test('상황판 상태를 누르면 그 상태인 대만 보이고, 다시 누�
 test('진입한 대의 층을 바꾸면 옮겨 간 것으로 기록되고 시간은 이어진다 + 층별 현황 보고', async () => {
     const page = await openApp(browser);
     await startWithDummy(page);
+    await blankTeams(page);
     await page.evaluate(() => {
         const app = window.fieldSafetyTimer;
         const set = [['작전119안전센터', 3, 20], ['계산119안전센터', 2, 10], ['작전119안전센터', null, 0]];
@@ -711,6 +748,7 @@ test('진입한 대의 층을 바꾸면 옮겨 간 것으로 기록되고 시간
 test('진입 대원을 아무도 체크하지 않으면 시작 안 됨, 경고 시간은 위험보다 짧아야 함, 진입 중 삭제는 기록', async () => {
     const page = await openApp(browser);
     await startWithDummy(page);
+    await blankTeams(page);
     await page.evaluate(() => {
         const app = window.fieldSafetyTimer;
         Object.assign(app.teams[0], { center: '작전119안전센터', vehicle: '펌프차', floor: 3, members: [] });
@@ -756,16 +794,29 @@ test('진입 대원을 아무도 체크하지 않으면 시작 안 됨, 경고 �
 test('새로고침하면 새 현장: 진입 중인 대가 없으면 바로 비우고, 있으면 이어서/새로 묻는다', async () => {
     const page = await openApp(browser);
     await startWithDummy(page);
+    await blankTeams(page);
     await addVehicle(page, '작전119안전센터', '펌프차', 3);
     await page.evaluate(() => window.fieldSafetyTimer.addLog(window.fieldSafetyTimer.teams.at(-1), '테스트', 0));
     await page.reload({ waitUntil: 'networkidle0' });
     await sleep(300);
     assert.ok(!(await isShown(page, 'resumeDialog')));
-    assert.deepEqual(await page.$$eval('.team-card h3', (hs) => hs.map((h) => h.textContent)), ['1착대', '2착대', '3착대']);
+    // 빈 목록 + '+ 대 추가' 칸으로 시작
+    assert.deepEqual(await page.$$eval('.team-card h3', (hs) => hs.map((h) => h.textContent)), []);
+    assert.ok(await page.$('.add-tile'), '+ 대 추가 칸');
     assert.equal(await page.evaluate(() => window.fieldSafetyTimer.logs.length), 0);
     assert.ok(!(await isShown(page, 'rosterModal')), '편성표는 그대로');
+    // 비운 기록은 '지난 현장 기록'으로 남는다
+    assert.equal(await page.evaluate(() => window.fieldSafetyTimer.pastIncidents[0].logs.at(-1).type), '테스트');
+    await click(page, '#settingsBtn');
+    await sleep(300);
+    await click(page, '#showLogBtn');
+    await sleep(300);
+    assert.match(await page.$eval('#pastLogs', (e) => e.textContent), /지난 현장 기록[\s\S]*1건 내려받기/);
+    await page.evaluate(() => window.fieldSafetyTimer.closeAllModals());
+    await page.evaluate(() => window.fieldSafetyTimer.closeAllModals());
 
     // 진입 중이면 묻는다: 이어서 하기 → 그대로
+    await blankTeams(page);
     await page.evaluate(() => {
         const app = window.fieldSafetyTimer;
         Object.assign(app.teams[0], { status: 'active', entryTime: Date.now() - 7 * 60000 });
@@ -791,6 +842,7 @@ test('새로고침하면 새 현장: 진입 중인 대가 없으면 바로 비�
 test('소속·차량을 정하지 않은 빈 칸(1~3착대)은 대기 대로 세지 않는다', async () => {
     const page = await openApp(browser);
     await startWithDummy(page);
+    await blankTeams(page);
     assert.equal(await page.$eval('#statusWaiting', (e) => e.textContent), '0');
     await click(page, '#reportBtn');
     await sleep(300);

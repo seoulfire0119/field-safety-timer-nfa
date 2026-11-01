@@ -66,9 +66,19 @@ async function addVehicle(page, center, vehicle, floor) {
 }
 
 // 마지막으로 추가한 대의 카드 (카드는 상태 순으로 정렬되므로 화면 순서가 아니라 id 로 찾는다)
+// 앱은 빈 목록('+ 대 추가')으로 시작한다. 예전 기본값처럼 빈 칸 1~3착대가 필요한 테스트용
+async function blankTeams(page) {
+    await page.evaluate(() => {
+        const app = window.fieldSafetyTimer;
+        app.teams.push(...[1, 2, 3].map((i) => ({ id: app.generateId(), name: `${i}착대`, floor: null, status: 'waiting', entryTime: null })));
+        app.saveTeams();
+        app.render();
+    });
+}
+
 const lastCard = async (page) => {
     const id = await page.evaluate(() => window.fieldSafetyTimer.teams.at(-1).id);
     return page.$(`[data-team-id="${id}"]`);
 };
 
-module.exports = { APP_URL, sleep, launch, openApp, click, isShown, startWithDummy, addVehicle, lastCard };
+module.exports = { APP_URL, sleep, launch, openApp, click, isShown, startWithDummy, addVehicle, lastCard, blankTeams };

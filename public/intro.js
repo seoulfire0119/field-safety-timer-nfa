@@ -1,35 +1,51 @@
 // 사용법 안내 (화면에 음영을 주고 실제 버튼을 강조하며 기능 설명)
 (function () {
+    // 화면에 없는 대상(예: 경보 중인 대가 없어 경보 정지 버튼이 없음)은 건너뛴다
     const steps = [
         {
             target: '.status-overview',
             pill: ['pill-red', '상황판'],
-            text: '대기·진입중·일시정지·경고·위험 상태인 <b>대의 수</b>를 한눈에 볼 수 있습니다.<br>경고·위험인 대는 카드 맨 위로 올라옵니다.'
-        },
-        {
-            target: '.team-card .btn-start',
-            pill: ['pill-green', '▶ 진입 시작'],
-            text: '<b>진입 시작</b> 버튼을 누르면 진입시간 측정이 시작됩니다.'
-        },
-        {
-            target: '.team-card .btn-edit',
-            pill: ['pill-orange', '이름 변경'],
-            text: '<b>연필</b> 버튼으로 1착대 이름을 바꿀 수 있습니다.<br>편성표를 불러왔다면 <b>안전센터 → 차량</b>을 눌러 탑승 대원까지 넣을 수 있습니다.'
-        },
-        {
-            target: '#rosterBtn',
-            pill: ['pill-blue', '편성표'],
-            text: '<b>출동대편성표</b>(엑셀·한글 hwpx·PDF)를 불러옵니다.<br>차량별로 <b>누가 진입했고 얼마나 됐는지</b> 볼 수 있습니다.'
-        },
-        {
-            target: '#settingsBtn',
-            pill: ['pill-orange', '시간 설정'],
-            text: '<b>톱니바퀴</b>를 누르면 <b class="c-warn">경고시간</b>과 <b class="c-danger">위험시간</b>이 나오며, 시간 설정을 변경할 수 있습니다.'
+            text: '대기·진입중·일시정지·경고·위험 상태인 <b>대의 수</b>를 한눈에 볼 수 있습니다.<br>누르면 그 상태인 대만 보입니다. 경고·위험인 대는 카드 맨 위로 올라옵니다.'
         },
         {
             target: '#addTeamBtn',
             pill: ['pill-blue', '대 추가'],
-            text: '<b>대 추가</b>(더하기) 버튼을 누르면 진압대를 더 추가할 수 있습니다.'
+            text: '<b>대 추가</b>를 누르고 <b>① 안전센터 → ② 차량</b>을 고른 뒤 진입 대원과 배정 위치(층·방면 또는 구역)를 넣습니다.<br>목록 끝의 <b>+ 칸</b>도 같은 버튼입니다.'
+        },
+        {
+            target: '.team-card .btn-start',
+            pill: ['pill-green', '▶ 진입 시작'],
+            text: '대원이 들어가면 <b>진입 시작</b>을 누릅니다. 압력계 바늘이 <b class="c-warn">노랑</b>(경고)·<b class="c-danger">빨강</b>(위험)에 들어가면 소리·진동·음성·화면 깜빡임으로 알립니다.'
+        },
+        {
+            target: '.team-card .btn-mute',
+            pill: ['pill-orange', '경보 정지'],
+            text: '<b>경보 정지</b>는 소리·진동·음성·깜빡임만 끄고 타이머와 색은 그대로 둡니다.<br>경고에서 꺼도 위험이 되면 다시 울립니다.'
+        },
+        {
+            target: '.team-card .btn-floor',
+            pill: ['pill-blue', '층 바꾸기'],
+            text: '<b>층 버튼</b>을 누르면 층·방면을 바로 바꿀 수 있습니다.<br>진입 중이면 "3층 → 5층 이동"으로 기록되고 시간은 이어집니다.'
+        },
+        {
+            target: '.team-card .btn-edit',
+            pill: ['pill-orange', '편집'],
+            text: '<b>편집</b>에서 차량·대원·대장을 바꾸고, 2인1조로 따로 움직일 때는 <b>조 나누기</b>(1조·2조)를 합니다.<br>대 삭제도 이 창 맨 아래에 있습니다.'
+        },
+        {
+            target: '#reportBtn',
+            pill: ['pill-red', '현황 보고'],
+            text: '층별로 <b>어느 대가 몇 분째</b> 들어가 있는지 정리하고, 그대로 읽을 보고 문장을 만들어 줍니다.'
+        },
+        {
+            target: '#rosterBtn',
+            pill: ['pill-blue', '편성표'],
+            text: '<b>출동대편성표</b>(엑셀·한글 hwpx·PDF)를 불러옵니다.<br>응원 출동이면 다른 소방서 편성표도 더할 수 있습니다.'
+        },
+        {
+            target: '#settingsBtn',
+            pill: ['pill-orange', '설정'],
+            text: '<b class="c-warn">경고시간</b>·<b class="c-danger">위험시간</b>, 압력계 톤, 카드 정렬, 알림을 바꾸고 <b>저장</b>을 누릅니다.<br><b>활동 기록</b>(지난 현장 포함)도 여기서 엑셀로 내려받습니다.'
         },
         {
             target: '#aboutSection',

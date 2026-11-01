@@ -382,6 +382,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
     margin: 0;
 }
 
+.report-muted {
+    padding: 1px 8px;
+    border: 1.5px dashed var(--danger);
+    border-radius: 6px;
+    color: var(--danger);
+    font-size: 0.85rem;
+    font-weight: 800;
+}
+
 .report-side {
     padding: 1px 8px;
     border: 1.5px solid var(--line);
@@ -548,16 +557,22 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
 .team-card.status-paused.from-warning { border-top-color: var(--warn); }
 .team-card.status-paused.from-danger { border-top-color: var(--danger); }
 
-/* 카드 윗부분: [착순 배지 ······ 연필·휴지통] / [대 이름 ······ 위치] */
-.team-top,
-.team-title {
-    display: flex;
-    justify-content: space-between;
+/* 진입 후 카드 윗부분: 2칸 격자
+   [착순 배지 ······ 편집]
+   [대 이름   ······ 위치]
+   오른쪽 두 버튼은 같은 열 너비로 늘려서 크기·테두리·글꼴을 똑같이 맞춘다 */
+.team-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: 8px;
+    gap: 6px 8px;
 }
 
-.team-top-left {
+.team-head > .btn-head {
+    justify-self: stretch;
+}
+
+.team-head-badge {
     min-width: 0;
 }
 
@@ -567,10 +582,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
     flex-direction: column;
     align-items: flex-start;
     gap: 2px;
-}
-
-.team-where {
-    flex-shrink: 0;
 }
 
 /* 진입 전 카드: 착순 배지 아래 [대 이름·위치 ······ 연필·휴지통] */
@@ -605,7 +616,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
     font-size: 0.9rem;
     font-weight: 800;
     color: var(--danger);
-    white-space: nowrap;
+    word-break: keep-all;
 }
 
 #unitRequiredMessage {
@@ -627,22 +638,29 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
     padding: 2px 10px;
 }
 
-/* 위치 버튼: 누르면 층·구역을 바로 바꾼다. 이름(왼쪽)보다 한 단계 작게, 버튼처럼 테두리·▾ */
-.btn-floor {
+/* 카드 윗부분 버튼(편집·위치): 같은 높이·테두리·글꼴. 이름(왼쪽)보다 한 단계 작게 */
+.btn-head {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
     min-height: 44px;
-    padding: 4px 10px 4px 12px;
+    padding: 4px 12px;
     border: 2px solid var(--line);
     border-radius: 10px;
     background: var(--surface-2);
     color: var(--fg);
     font: inherit;
-    font-size: 1.2rem;
+    font-size: 1.1rem;
     font-weight: 800;
+    line-height: 1;
     white-space: nowrap;
     cursor: pointer;
+}
+
+.btn-head .icon {
+    width: 1.1em;
+    height: 1.1em;
 }
 
 .btn-floor .team-floor {
@@ -656,7 +674,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
     opacity: 0.6;
 }
 
-.btn-floor:hover {
+.btn-head:hover {
     border-color: var(--fg);
 }
 
@@ -665,16 +683,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
     border-color: var(--danger);
     background: transparent;
     color: var(--danger);
-    font-size: 1.05rem;
 }
 
-.team-card.tone-danger .btn-floor {
+.team-card.tone-danger .btn-head {
     background: color-mix(in srgb, var(--dg-fg) 18%, transparent);
     border-color: color-mix(in srgb, var(--dg-fg) 55%, transparent);
     color: var(--dg-fg);
 }
 
-.team-card.tone-warning .btn-floor {
+.team-card.tone-warning .btn-head {
     background: var(--surface);
 }
 
@@ -846,6 +863,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
 
 .split-zone .btn {
     width: 100%;
+}
+
+.split-zone .btn + .btn {
+    margin-top: 8px;
+}
+
+.split-zone .btn[hidden] {
+    display: none;
 }
 
 .split-step-title {
@@ -1164,10 +1189,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
     text-overflow: ellipsis;
 }
 
+/* "1착"과 "작전"은 같은 글꼴·크기·굵기로 */
 .arrival-badge b {
-    font-family: var(--font-num);
-    font-size: 1.25rem;
-    font-weight: 700;
+    font: inherit;
 }
 
 .arrival-badge.arrival-none {
@@ -1348,7 +1372,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
 
 /* 카드가 자리를 옮긴 직후 잠깐(0.6초) 누름을 막는 동안 */
 .teams-list.tap-blocked .team-controls .btn,
-.teams-list.tap-blocked .btn-small {
+.teams-list.tap-blocked .btn-head {
     opacity: 0.45;
     transition: opacity 0.15s;
 }
@@ -1436,7 +1460,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
 
 /* 깜빡일 때 버튼 색이 늦게 따라오면 잠깐 빨강 위 빨강이 되어 버튼이 사라져 보인다 */
 .team-card.tone-danger .btn,
-.team-card.tone-danger .btn-small {
+.team-card.tone-danger .btn-head {
     transition: none;
 }
 
@@ -1462,9 +1486,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
         gap: 6px;
     }
 
-    .team-info h3 {
-        font-size: 1.25rem;
-    }
 
     /* 휴대폰 2열 카드: 착순 배지와 연필·휴지통이 한 줄에 들어가게 */
     .team-card {
@@ -1479,10 +1500,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
         gap: 3px;
         padding: 2px 8px;
         font-size: 0.9rem;
-    }
-
-    .arrival-badge b {
-        font-size: 1.05rem;
     }
 
     /* 휴지통이 빠져서 연필 하나만 남았으므로 크게 */
@@ -1500,15 +1517,25 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
         gap: 3px;
     }
 
-    .btn-floor {
+    .btn-head {
         min-height: 40px;
-        padding: 3px 8px 3px 10px;
+        padding: 3px 8px;
         gap: 4px;
-        font-size: 1.05rem;
+        font-size: 1rem;
     }
 
-    .btn-floor-missing {
-        font-size: 0.95rem;
+    /* 휴대폰: 편집은 연필만 (차량 이름이 두 줄로 꺾이지 않게 오른쪽 열을 좁힌다) */
+    .btn-head.btn-edit span {
+        display: none;
+    }
+
+    .btn-head.btn-edit .icon {
+        width: 1.25em;
+        height: 1.25em;
+    }
+
+    .team-info h3 {
+        font-size: 1.15rem;
     }
 
     .add-tile {
@@ -1724,6 +1751,23 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
     margin-top: 10px;
 }
 
+/* 활동 기록 창: 지난 현장 기록 */
+.past-logs {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 2px dashed var(--line);
+}
+
+.past-logs h3 {
+    font-size: 1.05rem;
+    margin-bottom: 4px;
+}
+
+.past-logs .past-log {
+    width: 100%;
+    margin-top: 8px;
+}
+
 /* 토스트 알림 */
 .toast {
     position: fixed;
@@ -1739,6 +1783,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
     max-width: min(320px, calc(100% - 32px));
     font-weight: 600;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+    /* 위쪽 버튼(현황 보고·편성표·설정·대 추가)을 덮어도 누름은 아래 버튼으로 간다 */
+    pointer-events: none;
 }
 
 .toast.show {
