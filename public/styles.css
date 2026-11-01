@@ -1538,6 +1538,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
         font-size: 1.15rem;
     }
 
+    /* 휴대폰 2열 카드는 좁아서 이름 옆에 위치 버튼을 두면 "3층 A방면"처럼 긴 위치에
+       이름·착순 배지가 밀려 잘린다 → 이름과 위치 버튼을 각각 한 줄 전체로 */
+    .team-head > .team-info,
+    .team-head > .btn-floor {
+        grid-column: 1 / -1;
+    }
+
     .add-tile {
         min-height: 180px;
     }
