@@ -1,4 +1,12 @@
 // 소방관 현장 진입 타이머 앱
+
+// 카드 정렬 방식. preview: 미리 보기 막대의 착순 색 (0=1착 센터, 1=2착 센터)
+const CARD_ORDERS = [
+    { id: 'registered', name: '등록 순서', desc: '대를 추가한 순서 그대로', preview: [0, 1, 0] },
+    { id: 'center', name: '센터별 묶기', desc: '착순대로 같은 센터끼리', preview: [0, 0, 1] },
+    { id: 'elapsed', name: '오래된 순', desc: '오래 들어가 있는 대가 위', preview: [1, 0, 0] }
+];
+
 class FieldSafetyTimer {
     constructor() {
         this.teams = [];
@@ -9,13 +17,14 @@ class FieldSafetyTimer {
             vibrationEnabled: true,
             voiceEnabled: true,  // 음성 안내
             flashEnabled: true,  // 경고·위험 시 화면 깜빡임
-            theme: 'graphite'    // 압력계 톤 (gauge.js THEMES)
+            theme: 'graphite',   // 압력계 톤 (gauge.js THEMES)
+            cardOrder: 'registered' // 카드 정렬 (CARD_ORDERS)
         };
         this.timers = new Map(); // 각 팀별 타이머 저장
-        this.alarmIntervals = new Map(); // 각 팀별 알람 반복 인터벌 저장
+        this.alarmIntervals = new Map(); // 경보가 울리는 대 (소리는 alarmLoop 하나로 묶어서)
+        this.alarmLoop = null;
         this.rosters = []; // 불러온 출동대편성표 (소방서마다 하나, 응원 출동이면 여러 개)
         this.pick = null;   // 편집 창에서 고른 센터/차량/대원
-        this.openMembers = new Set(); // 대원명을 펼친 카드
         this.logs = [];               // 활동 기록 (진입·일시정지·경고 등)
         this.wakeLock = null;         // 화면 꺼짐 방지
         this.lastSpoken = new Map();  // 팀별 마지막 음성 안내 시각
@@ -88,8 +97,7 @@ class FieldSafetyTimer {
 
     // 현장 기록 비우기: 대 목록(기본 3개로)·활동 기록·착순
     clearIncident() {
-        this.alarmIntervals.forEach(id => clearInterval(id));
-        this.alarmIntervals.clear();
+        this.stopAllAlarms();
         this.timers.clear();
         this.teams = this.defaultTeams();
         this.logs = [];
@@ -240,6 +248,10 @@ class FieldSafetyTimer {
         document.getElementById('closeSettingsBtn').addEventListener('click', () => {
             this.closeModal('settingsModal');
         });
+        document.getElementById('cancelSettingsBtn').addEventListener('click', () => {
+            this.closeModal('settingsModal');
+        });
+        document.getElementById('saveSettingsBtn').addEventListener('click', () => this.updateSettings());
 
         document.getElementById('clearDataBtn').addEventListener('click', () => {
             this.showConfirmDialog('모든 데이터를 초기화하시겠습니까?', () => {
@@ -340,15 +352,9 @@ class FieldSafetyTimer {
             const btn = e.target.closest('.theme-pick');
             if (btn) this.pickTheme(btn.dataset.theme);
         });
-
-        // 설정 변경 이벤트
-        ['warningTime', 'dangerTime', 'soundEnabled', 'vibrationEnabled', 'voiceEnabled', 'flashEnabled'].forEach(id => {
-            const element = document.getElementById(id);
-            if (element) {
-                element.addEventListener('change', () => {
-                    this.updateSettings();
-                });
-            }
+        document.getElementById('orderPicks').addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-order]');
+            if (btn) this.pickCardOrder(btn.dataset.order);
         });
 
         // 모달 외부 클릭시 닫기
@@ -925,17 +931,59 @@ class FieldSafetyTimer {
         document.getElementById('voiceEnabled').checked = this.settings.voiceEnabled;
         document.getElementById('flashEnabled').checked = this.settings.flashEnabled;
         document.getElementById('showLogBtn').textContent = `활동 기록 보기 (${this.logs.length}건)`;
+        // 설정 창에서 고른 것은 '저장'을 눌러야 적용된다. 그 전까지는 초안에만 담는다
+        this.settingsDraft = { ...this.settings };
         this.renderThemePicks();
+        this.renderOrderPicks();
 
         this.showModal('settingsModal');
     }
 
+    // 설정 창 안에서 바꾼 값 (초안 + 아직 읽지 않은 입력칸)
+    readSettingsForm() {
+        return {
+            ...this.settingsDraft,
+            warningTime: parseInt(document.getElementById('warningTime').value, 10),
+            dangerTime: parseInt(document.getElementById('dangerTime').value, 10),
+            soundEnabled: document.getElementById('soundEnabled').checked,
+            vibrationEnabled: document.getElementById('vibrationEnabled').checked,
+            voiceEnabled: document.getElementById('voiceEnabled').checked,
+            flashEnabled: document.getElementById('flashEnabled').checked
+        };
+    }
+
+    // 설정 창에서 바꾼 것이 있는지 (저장 전)
+    settingsChanged() {
+        if (!this.settingsDraft) return false;
+        const form = this.readSettingsForm();
+        return Object.keys(form).some(k => form[k] !== this.settings[k]);
+    }
+
+    // 설정: 카드 정렬 (어느 방식이든 위험·경고인 대는 맨 위)
+    renderOrderPicks() {
+        const s = this.settingsDraft || this.settings;
+        const current = CARD_ORDERS.some(o => o.id === s.cardOrder) ? s.cardOrder : 'registered';
+        document.getElementById('orderPicks').innerHTML = CARD_ORDERS.map(o => `
+            <button type="button" class="theme-pick order-pick" data-order="${o.id}" aria-pressed="${o.id === current}">
+                <span class="order-preview">${o.preview.map(c => `<i style="--c: ${Gauge.centerColor(s.theme, c)}"></i>`).join('')}</span>
+                <strong>${o.name}</strong>
+                <span>${o.desc}</span>
+            </button>`).join('');
+    }
+
+    pickCardOrder(id) {
+        if (!this.settingsDraft) return;
+        this.settingsDraft.cardOrder = id;
+        this.renderOrderPicks();
+    }
+
     // 설정: 압력계 톤 5가지 (작은 압력계로 미리 보기)
     renderThemePicks() {
+        const s = this.settingsDraft || this.settings;
         const sample = { warningTime: this.settings.warningTime, dangerTime: this.settings.dangerTime };
         const minutes = Math.min(this.settings.warningTime, this.settings.dangerTime) * 0.6;
         document.getElementById('themePicks').innerHTML = Gauge.THEMES.map(t => `
-            <button type="button" class="theme-pick" data-theme="${t.id}" aria-pressed="${Gauge.theme(this.settings.theme).id === t.id}">
+            <button type="button" class="theme-pick" data-theme="${t.id}" aria-pressed="${Gauge.theme(s.theme).id === t.id}">
                 <span class="theme-preview" data-gauge-preview="${t.id}">${Gauge.svg(sample, minutes * 60000, '', t.colors[0])}</span>
                 <strong>${t.name}</strong>
                 <span>${t.desc}</span>
@@ -943,34 +991,29 @@ class FieldSafetyTimer {
     }
 
     pickTheme(id) {
-        this.settings.theme = Gauge.theme(id).id;
-        this.saveSettings();
-        this.applyTheme();
+        if (!this.settingsDraft) return;
+        this.settingsDraft.theme = Gauge.theme(id).id;
         this.renderThemePicks();
-        this.renderTeams();
+        this.renderOrderPicks(); // 정렬 미리 보기 색도 톤을 따른다
     }
 
-    // 설정 업데이트
+    // 설정 저장 ('저장' 버튼)
     updateSettings() {
-        const warning = parseInt(document.getElementById('warningTime').value, 10);
-        const danger = parseInt(document.getElementById('dangerTime').value, 10);
-        // 경고는 위험보다 짧아야 의미가 있다. 잘못 넣으면 저장하지 않고 원래 값으로 돌린다
-        if (!(warning >= 1 && danger >= 2 && warning < danger && danger <= 120)) {
-            document.getElementById('warningTime').value = this.settings.warningTime;
-            document.getElementById('dangerTime').value = this.settings.dangerTime;
+        const next = this.readSettingsForm();
+        // 경고는 위험보다 먼저 와야 한다. 잘못 넣으면 저장하지 않고 창을 열어 둔다
+        if (!(next.warningTime >= 1 && next.dangerTime >= 2 && next.warningTime < next.dangerTime && next.dangerTime <= 120)) {
             this.showToast('경고 시간은 1분 이상, 위험 시간보다 짧아야 합니다. (위험은 120분 이하)', 'error');
             return;
         }
-        this.settings.warningTime = warning;
-        this.settings.dangerTime = danger;
-        this.settings.soundEnabled = document.getElementById('soundEnabled').checked;
-        this.settings.vibrationEnabled = document.getElementById('vibrationEnabled').checked;
-        this.settings.voiceEnabled = document.getElementById('voiceEnabled').checked;
-        this.settings.flashEnabled = document.getElementById('flashEnabled').checked;
+        this.settings = next;
+        this.settingsDraft = null;
 
         this.saveSettings();
-        this.renderTeams(); // 압력계 눈금을 새 경고·위험 시간으로
+        this.applyTheme();
+        this.renderTeams(); // 압력계 눈금·톤·정렬을 새 설정으로
         this.updateAlertFlash();
+        this.closeModal('settingsModal');
+        this.showToast('설정을 저장했습니다.', 'success');
     }
 
     // 진입 시작
@@ -986,6 +1029,7 @@ class FieldSafetyTimer {
         team.moves = [];
         team.pausedElapsed = null;
         team.pausedAt = null;
+        team.alarmMuted = null;
         this.addLog(team, '진입 시작', 0);
 
         this.saveTeams();
@@ -1101,6 +1145,7 @@ ${missing.map(m => `· ${m}`).join('\n')}
         team.pausedElapsed = null;
         team.pausedAt = null;
         team.pausedFromStatus = null;
+        team.alarmMuted = null;
 
         // 알람 중지
         this.stopAlarm(teamId);
@@ -1146,14 +1191,21 @@ ${missing.map(m => `· ${m}`).join('\n')}
                 }
 
 
-                // 상태 변경시 알림
+                // 상태 변경시 알림. 알림(소리·기기 알림)이 실패해도 카드 색은 반드시 바뀌어야 한다
                 if (oldStatus !== team.status) {
-                    this.triggerAlert(team, team.status);
                     needsRerender = true;
+                    // 경보 정지는 그 단계에만: 경고에서 껐어도 위험이 되면 다시 울린다
+                    if (team.alarmMuted && team.alarmMuted !== team.status) team.alarmMuted = null;
+                    try {
+                        this.triggerAlert(team, team.status);
+                    } catch (error) {
+                        console.warn('알림 실패:', error);
+                    }
                 }
 
-                // 경고나 위험 상태일 때 지속적인 알람 (아직 울리고 있지 않다면 시작)
-                if ((team.status === 'warning' || team.status === 'danger') && !this.alarmIntervals.has(team.id)) {
+                // 경고나 위험 상태일 때 지속적인 알람 (아직 울리고 있지 않고, 경보 정지를 누르지 않았다면 시작)
+                if ((team.status === 'warning' || team.status === 'danger') && !this.alarmIntervals.has(team.id)
+                    && team.alarmMuted !== team.status) {
                     this.startContinuousAlarm(team);
                 }
 
@@ -1202,23 +1254,7 @@ ${missing.map(m => `· ${m}`).join('\n')}
         if (!teamCard) {
             return;
         }
-        const elapsed = Date.now() - team.entryTime;
-        Gauge.update(teamCard, this.settings, elapsed);
-        const remain = teamCard.querySelector('.team-remain');
-        if (remain) remain.textContent = this.remainText(team, elapsed);
-    }
-
-    // 다음 단계까지 남은 시간 ("위험까지 9분"). 지휘관이 철수 지시 시점을 가늠하도록
-    remainText(team, elapsed) {
-        const { warningTime, dangerTime } = this.settings;
-        const left = (min) => Math.max(1, Math.ceil((min * 60000 - elapsed) / 60000));
-        if (team.status === 'active') return warningTime < dangerTime ? `경고까지 ${left(warningTime)}분` : `위험까지 ${left(dangerTime)}분`;
-        if (team.status === 'warning') return `위험까지 ${left(dangerTime)}분`;
-        if (team.status === 'danger') {
-            const over = Math.floor((elapsed - dangerTime * 60000) / 60000);
-            return over >= 1 ? `위험 ${over}분 넘음` : '위험 시간 도달';
-        }
-        return '';
+        Gauge.update(teamCard, this.settings, Date.now() - team.entryTime);
     }
 
     // 일시정지된 팀 디스플레이 업데이트 (멈춘 시간 그대로)
@@ -1252,16 +1288,6 @@ ${missing.map(m => `· ${m}`).join('\n')}
 
     // 개별 팀 카드에 이벤트 리스너 추가
     addTeamCardEventListeners(team, card) {
-        // 대원명 알아보기
-        const membersBtn = card.querySelector('.btn-members');
-        if (membersBtn) {
-            membersBtn.addEventListener('click', () => {
-                if (this.openMembers.has(team.id)) this.openMembers.delete(team.id);
-                else this.openMembers.add(team.id);
-                this.updateSingleTeamCard(team);
-            });
-        }
-
         // 편집 버튼
         const editBtn = card.querySelector('.btn-edit');
         if (editBtn) {
@@ -1299,6 +1325,10 @@ ${missing.map(m => `· ${m}`).join('\n')}
         }
         if (resumeBtn) {
             resumeBtn.addEventListener('click', guarded(() => this.resumeTimer(team.id)));
+        }
+        const muteBtn = card.querySelector('.btn-mute');
+        if (muteBtn) {
+            muteBtn.addEventListener('click', guarded(() => this.toggleAlarmMute(team.id)));
         }
         if (resetBtn) {
             resetBtn.addEventListener('click', () => {
@@ -1349,25 +1379,30 @@ ${missing.map(m => `· ${m}`).join('\n')}
         this.showToast(message, alertType === 'danger' ? 'error' : 'warning');
 
         // 브라우저 알림
-        if (this.settings.soundEnabled && 'Notification' in window && Notification.permission === 'granted') {
-            new Notification('소방관 현장 진입 타이머', {
-                body: message,
-                icon: 'icon-192x192.png',
-                badge: 'icon-192x192.png',
-                tag: `timer-${team.id}`,
-                requireInteraction: true
-            });
-        }
+        if (this.settings.soundEnabled) this.notify(message, `timer-${team.id}`);
 
-        // 진동
-        if (this.settings.vibrationEnabled && 'vibrate' in navigator) {
-            const pattern = alertType === 'danger' ? [200, 100, 200, 100, 200] : [300, 200, 300];
-            navigator.vibrate(pattern);
-        }
+        // 소리·진동 (같은 순간 여러 대가 바뀌어도 한 번만)
+        this.ringAlarm(alertType);
+    }
 
-        // 소리 (가능하면)
-        if (this.settings.soundEnabled) {
-            this.playAlertSound(alertType);
+    // 기기 알림. 안드로이드 크롬(태블릿·휴대폰)은 new Notification() 을 막고 오류를 내므로
+    // 서비스워커로 띄우고, 어떤 경우에도 오류가 화면 갱신을 멈추지 않게 한다
+    notify(body, tag) {
+        if (!('Notification' in window) || Notification.permission !== 'granted') return;
+        const options = { body, icon: 'icon-192x192.png', badge: 'icon-192x192.png', tag, requireInteraction: true };
+        const fallback = () => {
+            try {
+                new Notification('소방관 현장 진입 타이머', options);
+            } catch (error) {
+                console.warn('알림 표시 실패:', error);
+            }
+        };
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.ready
+                .then(reg => reg.showNotification('소방관 현장 진입 타이머', options))
+                .catch(fallback);
+        } else {
+            fallback();
         }
     }
 
@@ -1397,7 +1432,7 @@ ${missing.map(m => `· ${m}`).join('\n')}
 
     // 위험: 위험 상태인 대가 있으면 화면 전체를 빨갛게 깜빡이고 위쪽에 대 이름을 띄운다
     updateAlertFlash() {
-        const danger = this.teams.filter(t => t.status === 'danger' && t.entryTime);
+        const danger = this.teams.filter(t => t.status === 'danger' && t.entryTime && !this.isAlarmMuted(t));
         const banner = document.getElementById('alertFlashBanner');
         document.body.classList.toggle('flash-danger', danger.length > 0 && this.settings.flashEnabled);
         banner.hidden = danger.length === 0;
@@ -1554,61 +1589,81 @@ ${missing.map(m => `· ${m}`).join('\n')}
         }
     }
 
-    // 연속 알람 시작
+    // 연속 알람: 경보 중인 대를 alarmIntervals 에 담고, 소리·진동은 하나의 반복(3초)으로 묶는다.
+    // 대가 여럿이어도 소리가 겹치지 않게, 가장 심한 단계(위험 > 경고)로 한 번만 울린다
     startContinuousAlarm(team) {
-        // 이미 울리고 있다면 중복 방지
-        if (this.alarmIntervals.has(team.id)) {
-            return;
-        }
+        if (this.alarmIntervals.has(team.id)) return;
+        this.alarmIntervals.set(team.id, true);
+        this.ringAlarm(team.status); // 첫 번째는 바로
+        if (!this.alarmLoop) this.alarmLoop = setInterval(() => this.alarmTick(), 3000);
+    }
 
-        const teamId = team.id;
-
-        // 첫 번째 알람 즉시 실행
-        if (this.settings.vibrationEnabled && 'vibrate' in navigator) {
-            const pattern = team.status === 'danger' ? [200, 100, 200, 100, 200] : [300, 200, 300];
-            navigator.vibrate(pattern);
-        }
-        if (this.settings.soundEnabled) {
-            this.playAlertSound(team.status);
-        }
-
-        const intervalId = setInterval(() => {
-            // 현재 팀 상태를 다시 확인
-            const currentTeam = this.teams.find(t => t.id === teamId);
-            if (!currentTeam || (currentTeam.status !== 'warning' && currentTeam.status !== 'danger')) {
+    alarmTick() {
+        const alarming = [];
+        for (const teamId of [...this.alarmIntervals.keys()]) {
+            const t = this.teams.find(x => x.id === teamId);
+            if (!t || (t.status !== 'warning' && t.status !== 'danger') || t.alarmMuted === t.status) {
                 this.stopAlarm(teamId);
-                return;
+            } else {
+                alarming.push(t);
             }
+        }
+        if (!alarming.length) return;
+        this.ringAlarm(alarming.some(t => t.status === 'danger') ? 'danger' : 'warning');
 
+        // 위험 상태는 1분마다 음성으로 다시 알린다 (대마다)
+        alarming.filter(t => t.status === 'danger' && Date.now() - (this.lastSpoken.get(t.id) || 0) >= 60000).forEach(t => {
+            const min = Math.floor((Date.now() - t.entryTime) / 60000);
+            this.speak(`위험. ${`${this.arrivalLabel(t)} ${t.name}`.trim()}, ${min}분 경과.`);
+            this.lastSpoken.set(t.id, Date.now());
+        });
+    }
 
-            // 진동
-            if (this.settings.vibrationEnabled && 'vibrate' in navigator) {
-                const pattern = currentTeam.status === 'danger' ? [200, 100, 200, 100, 200] : [300, 200, 300];
-                navigator.vibrate(pattern);
-            }
+    // 소리·진동 한 번. 같은 순간(1초 안)에 여러 대가 경보가 되어도 한 번만
+    ringAlarm(level) {
+        const now = Date.now();
+        if (now - (this.lastRingAt || 0) < 1000) return;
+        this.lastRingAt = now;
+        if (this.settings.vibrationEnabled && 'vibrate' in navigator) {
+            navigator.vibrate(level === 'danger' ? [200, 100, 200, 100, 200] : [300, 200, 300]);
+        }
+        if (this.settings.soundEnabled) this.playAlertSound(level);
+    }
 
-            // 소리
-            if (this.settings.soundEnabled) {
-                this.playAlertSound(currentTeam.status);
-            }
-
-            // 위험 상태는 1분마다 음성으로 다시 알린다
-            if (currentTeam.status === 'danger' && Date.now() - (this.lastSpoken.get(teamId) || 0) >= 60000) {
-                const min = Math.floor((Date.now() - currentTeam.entryTime) / 60000);
-                this.speak(`위험. ${`${this.arrivalLabel(currentTeam)} ${currentTeam.name}`.trim()}, ${min}분 경과.`);
-                this.lastSpoken.set(teamId, Date.now());
-            }
-        }, 3000); // 3초마다 반복
-
-        this.alarmIntervals.set(teamId, intervalId);
+    // 경보 정지: 타이머·카드 색은 그대로 두고 소리·진동·음성만 끈다 (다음 단계가 되면 다시 울림)
+    toggleAlarmMute(teamId) {
+        const team = this.teams.find(t => t.id === teamId);
+        if (!team || !['warning', 'danger'].includes(team.status)) return;
+        if (team.alarmMuted === team.status) {
+            team.alarmMuted = null;
+            this.addLog(team, '경보 다시 켬', this.teamElapsed(team));
+            this.startContinuousAlarm(team);
+            this.showToast(`${team.name} 경보를 다시 켰습니다`, 'success');
+        } else {
+            team.alarmMuted = team.status;
+            this.stopAlarm(teamId);
+            if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+            if ('vibrate' in navigator) navigator.vibrate(0);
+            this.addLog(team, '경보 정지', this.teamElapsed(team));
+            document.body.classList.remove('flash-warning');
+            this.showToast(`${team.name} 경보 정지 (타이머는 계속)`, 'warning');
+        }
+        this.saveTeams();
+        this.renderTeams();
+        this.updateAlertFlash();
     }
 
     // 알람 중지
     stopAlarm(teamId) {
-        if (this.alarmIntervals.has(teamId)) {
-            clearInterval(this.alarmIntervals.get(teamId));
-            this.alarmIntervals.delete(teamId);
+        this.alarmIntervals.delete(teamId);
+        if (!this.alarmIntervals.size && this.alarmLoop) {
+            clearInterval(this.alarmLoop);
+            this.alarmLoop = null;
         }
+    }
+
+    stopAllAlarms() {
+        [...this.alarmIntervals.keys()].forEach(id => this.stopAlarm(id));
     }
 
     // 알림 권한 요청
@@ -1628,17 +1683,34 @@ ${missing.map(m => `· ${m}`).join('\n')}
         this.updateStatusOverview();
     }
 
-    // 카드 순서: 위험 → 경고 → 나머지(등록한 순서)
-    // 진입 시작·일시정지·이어서 시작을 눌러도 카드가 움직이지 않게, 시간이 지나 경고·위험이 될 때만 위로 올린다.
-    // 일시정지한 대는 멈추기 전 상태 자리에 그대로 둔다.
+    // 카드 순서: 위험 → 경고 → 나머지(설정의 카드 정렬)
+    // 등록 순서·센터별 묶기는 진입 시작·일시정지·이어서 시작을 눌러도 카드가 움직이지 않게,
+    // 시간이 지나 경고·위험이 될 때만 위로 올린다. 일시정지한 대는 멈추기 전 상태 자리에 그대로 둔다.
     sortedTeams() {
         const rank = (t) => {
             const status = t.status === 'paused' ? (t.pausedFromStatus || 'active') : t.status;
             return status === 'danger' ? 0 : status === 'warning' ? 1 : 2;
         };
-        return this.teams
-            .map((team, i) => ({ team, i }))
-            .sort((a, b) => rank(a.team) - rank(b.team) || a.i - b.i)
+        const items = this.teams.map((team, i) => ({ team, i }));
+        let key = (x) => x.i;
+        if (this.settings.cardOrder === 'center') {
+            // 착순대로 같은 센터끼리. 착순 전 센터는 처음 등록한 자리, 소속이 없는 대는 제자리
+            const arrivals = this.arrivalOrder();
+            const first = new Map();
+            items.forEach(x => { if (x.team.center && !first.has(x.team.center)) first.set(x.team.center, x.i); });
+            const group = (x) => {
+                if (!x.team.center) return 1000 + x.i;
+                const a = arrivals.indexOf(x.team.center);
+                return a >= 0 ? a : 1000 + first.get(x.team.center);
+            };
+            key = (x) => group(x) * 10000 + x.i;
+        } else if (this.settings.cardOrder === 'elapsed') {
+            // 오래 들어가 있는 대가 위, 진입 전인 대는 아래(등록한 순서)
+            const inside = (t) => ['active', 'warning', 'danger', 'paused'].includes(t.status);
+            key = (x) => inside(x.team) ? -this.teamElapsed(x.team) : 1e15 + x.i;
+        }
+        return items
+            .sort((a, b) => rank(a.team) - rank(b.team) || key(a) - key(b))
             .map(x => x.team);
     }
 
@@ -1669,6 +1741,10 @@ ${missing.map(m => `· ${m}`).join('\n')}
         const kept = (ids) => ids.filter(id => before.has(id) && order.some(t => t.id === id)).join();
         if (kept([...before.keys()]) !== kept(order.map(t => t.id))) {
             this.tapBlockUntil = Math.max(this.tapBlockUntil, Date.now() + 600);
+            // 막혀 있는 동안 버튼을 흐리게 보여 준다 (고장 난 것처럼 보이지 않게)
+            container.classList.add('tap-blocked');
+            clearTimeout(this.tapBlockTimer);
+            this.tapBlockTimer = setTimeout(() => container.classList.remove('tap-blocked'), this.tapBlockUntil - Date.now());
         }
 
         if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -1705,45 +1781,27 @@ ${missing.map(m => `· ${m}`).join('\n')}
         const paused = team.status === 'paused';
         const shown = paused ? (team.pausedFromStatus || 'active') : team.status;
         const enteredAt = team.firstEntryAt || team.entryTime;
-        // 일시정지 중에도 진입 시각을 보여 준다 (일시정지는 아래 상태 표시로 알 수 있다)
+        // 일시정지 중에도 진입 시각을 보여 준다 (일시정지는 압력계 가운데 팻말로 알 수 있다)
         const sub = team.status === 'waiting' ? '진입 전' : `${this.clockText(enteredAt)} 진입`;
-        const leader = (team.members || []).find(m => m.role === '대장');
         const arrival = team.center ? this.arrivalOrder().indexOf(team.center) : -1;
         const ring = Gauge.centerColor(this.settings.theme, arrival);
         const recent = (map, key, ms) => Date.now() - (map.get(key) || 0) < ms;
         const pop = arrival >= 0 && recent(this.arrivalPop, team.center, 1500) ? ' arrival-pop' : '';
         const flash = recent(this.ringFlash, team.id, 3000) ? ' ring-flash' : '';
+        // 일시정지해도 멈추기 전 상태 색(tone)은 그대로. 경보 정지하면 깜빡임 없이 색만
+        const muted = this.isAlarmMuted(team) ? ' alarm-muted' : '';
         const badge = !team.center ? ''
             : arrival >= 0 ? `<span class="arrival-badge${pop}" style="--c: ${ring}"><b>${arrival + 1}착</b>${escapeHtml(this.unitLabel(team))}</span>`
                 : `<span class="arrival-badge arrival-none">착순 전 · ${escapeHtml(this.unitLabel(team))}</span>`;
 
         return `
-            <article class="team-card status-${paused ? 'paused' : team.status} from-${shown}${flash}" data-team-id="${team.id}">
-                ${badge}
-                <div class="team-header">
-                    <div class="team-info">
-                        <h3>${escapeHtml(team.name)}</h3>
-                        <div class="team-sub">
-                            ${team.floor || team.zone ? `<span class="team-floor">${escapeHtml(this.locationText(team))}</span>` : ''}
-                            ${team.vehicle ? '' : '<span class="team-nounit">소속·차량 미선택</span>'}
-                            ${team.floor || team.zone ? '' : '<span class="team-nounit">위치 미입력</span>'}
-                        </div>
-                    </div>
-                    <div class="team-actions">
-                        <button class="btn-small btn-edit" title="편집" aria-label="${escapeHtml(team.name)} 편집">${ICONS.edit}</button>
-                        <button class="btn-small btn-delete" title="삭제" aria-label="${escapeHtml(team.name)} 삭제">${ICONS.trash}</button>
-                    </div>
+            <article class="team-card status-${paused ? 'paused' : team.status} from-${shown} tone-${shown}${muted}${flash}" data-team-id="${team.id}">
+                ${this.renderTeamHead(team, badge)}
+
+                <div class="team-gauge">
+                    ${Gauge.svg(this.settings, elapsed, sub, ring)}
+                    ${paused ? '<span class="paused-sign" role="status">일시정지</span>' : ''}
                 </div>
-
-                <div class="team-gauge">${Gauge.svg(this.settings, elapsed, sub, ring)}</div>
-
-                <div class="team-meta">
-                    <span class="status-badge status-${paused ? 'paused' : team.status}">${this.getStatusText(team.status)}</span>
-                    <span class="team-remain">${this.remainText(team, elapsed)}</span>
-                    ${leader ? `<span class="team-leader">대장 <b>${escapeHtml(leader.name)}</b></span>` : ''}
-                </div>
-
-                ${this.renderTeamMembers(team)}
 
                 <div class="team-controls">
                     ${this.renderTeamControls(team)}
@@ -1752,32 +1810,64 @@ ${missing.map(m => `· ${m}`).join('\n')}
         `;
     }
 
-    // 진입 대원 표시
-    renderTeamMembers(team) {
-        if (!team.members || !team.members.length) return '';
-        const open = this.openMembers.has(team.id);
+    // 카드 윗부분.
+    // 진입 전: 착순 배지·대 이름·위치를 모두 왼쪽에 모아 둔다 (입력할 것이 한눈에)
+    // 진입 후: [착순 배지 ··· 연필·휴지통] / [대 이름 ··· 위치] 로 양쪽에 나눈다
+    renderTeamHead(team, badge) {
+        const actions = `
+            <div class="team-actions">
+                <button class="btn-small btn-edit" title="편집" aria-label="${escapeHtml(team.name)} 편집">${ICONS.edit}</button>
+                <button class="btn-small btn-delete" title="삭제" aria-label="${escapeHtml(team.name)} 삭제">${ICONS.trash}</button>
+            </div>`;
+        const where = team.floor || team.zone ? `<span class="team-floor">${escapeHtml(this.locationText(team))}</span>` : '';
+        const noUnit = team.vehicle ? '' : '<span class="team-nounit">소속·차량 미선택</span>';
+        const noWhere = where ? '' : '<span class="team-nounit">위치 미입력</span>';
+
+        if (team.status === 'waiting') {
+            return `
+                ${badge}
+                <div class="team-header">
+                    <div class="team-info">
+                        <h3>${escapeHtml(team.name)}</h3>
+                        <div class="team-sub">${where}${noUnit}${noWhere}</div>
+                    </div>
+                    ${actions}
+                </div>`;
+        }
         return `
-            <div class="team-members">
-                <button type="button" class="btn-members ${open ? 'open' : ''}">
-                    ${team.members.length}명 진입 · ${open ? '숨기기' : '대원명'}
-                </button>
-                ${open ? team.members.map(m => m.role === '대장'
-                    ? `<span class="member-chip leader">⭐ ${escapeHtml(m.name)}</span>`
-                    : `<span class="member-chip">${escapeHtml(m.name)}</span>`).join('') : ''}
+            <div class="team-top">
+                <div class="team-top-left">${badge}</div>
+                ${actions}
             </div>
-        `;
+            <div class="team-title">
+                <div class="team-info">
+                    <h3>${escapeHtml(team.name)}</h3>
+                    ${noUnit}
+                </div>
+                <div class="team-where">${where || noWhere}</div>
+            </div>`;
     }
 
     // 팀 제어 버튼 렌더링: 큰 버튼 하나 + 초기화
+    // 초기화는 일시정지한 뒤에만 (진입 중에 잘못 눌러 시간이 사라지지 않게)
     renderTeamControls(team) {
         const reset = `<button class="btn btn-secondary btn-reset" title="초기화" aria-label="초기화">${ICONS.reset}</button>`;
 
         if (team.status === 'waiting') {
-            return `<button class="btn btn-primary btn-start">${ICONS.play} 진입 시작</button>${reset}`;
+            return `<button class="btn btn-primary btn-start">${ICONS.play} 진입 시작</button>`;
         } else if (team.status === 'paused') {
             return `<button class="btn btn-primary btn-resume">${ICONS.play} 이어서 시작</button>${reset}`;
         }
-        return `<button class="btn btn-pause">${ICONS.pause} 일시정지</button>${reset}`;
+        const alarming = team.status === 'warning' || team.status === 'danger';
+        const mute = !alarming ? ''
+            : this.isAlarmMuted(team) ? `<button class="btn btn-mute muted" aria-pressed="true">${ICONS.bell} 경보 켜기</button>`
+                : `<button class="btn btn-mute" aria-pressed="false">${ICONS.bellOff} 경보 정지</button>`;
+        return `<button class="btn btn-pause">${ICONS.pause} 일시정지</button>${mute}`;
+    }
+
+    // 지금 단계의 경보를 껐는지 (경고에서 껐어도 위험이 되면 다시 울린다)
+    isAlarmMuted(team) {
+        return ['warning', 'danger'].includes(team.status) && team.alarmMuted === team.status;
     }
 
     setFilter(status) {
@@ -1922,14 +2012,34 @@ ${missing.map(m => `· ${m}`).join('\n')}
         document.body.style.overflow = 'hidden';
     }
 
-    closeModal(modalId) {
+    closeModal(modalId, force = false) {
         if (modalId === 'rosterModal' && !this.hasRoster()) return; // 편성표 없이는 닫지 않는다
+        if (modalId === 'settingsModal' && this.settingsDraft) {
+            // 바꾼 설정을 저장하지 않고 닫으려 하면 한 번 묻는다
+            if (!force && this.settingsChanged()) {
+                this.showConfirmDialog('바꾼 설정을 저장하지 않았습니다.\n저장하지 않고 닫을까요?', () => this.closeModal('settingsModal', true));
+                return;
+            }
+            this.settingsDraft = null;
+        }
         const modal = document.getElementById(modalId);
         modal.classList.remove('show');
         document.body.style.overflow = '';
     }
 
     closeAllModals() {
+        const shown = (id) => document.getElementById(id).classList.contains('show');
+        // Esc: 확인 창이 떠 있으면 그것만 닫는다 (아니요와 같다)
+        if (shown('confirmDialog')) {
+            this.closeModal('confirmDialog');
+            return;
+        }
+        // 저장하지 않은 설정이 있으면 먼저 묻는다
+        if (shown('settingsModal') && this.settingsChanged()) {
+            this.closeModal('settingsModal');
+            return;
+        }
+        this.settingsDraft = null;
         document.querySelectorAll('.modal').forEach(modal => {
             if (modal.id === 'rosterModal' && !this.hasRoster()) return;
             modal.classList.remove('show');
@@ -1969,11 +2079,7 @@ ${missing.map(m => `· ${m}`).join('\n')}
 
     // 전체 데이터 초기화
     clearAllData() {
-        // 모든 알람 중지
-        this.alarmIntervals.forEach((intervalId, teamId) => {
-            clearInterval(intervalId);
-        });
-        this.alarmIntervals.clear();
+        this.stopAllAlarms();
 
         this.teams = [];
         this.rosters = [];
@@ -1983,6 +2089,7 @@ ${missing.map(m => `· ${m}`).join('\n')}
         clearAllData();
         this.render();
         this.showToast('모든 데이터가 초기화되었습니다.', 'success');
+        this.settingsDraft = null; // 설정 창에서 눌렀으므로 저장 여부는 묻지 않는다
         this.closeAllModals();
         this.showRosterModal();
     }
@@ -1995,6 +2102,8 @@ const ICONS = {
     pause: icon('<rect x="6" y="4.5" width="4" height="15" rx="1" fill="currentColor"/><rect x="14" y="4.5" width="4" height="15" rx="1" fill="currentColor"/>'),
     reset: icon('<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4v4h4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>'),
     edit: icon('<path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>'),
+    bell: icon('<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'),
+    bellOff: icon('<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5h4M4 4l16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'),
     trash: icon('<path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>')
 };
 

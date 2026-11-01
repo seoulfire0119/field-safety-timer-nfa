@@ -113,7 +113,7 @@ firebase deploy --only hosting
 
 ```bash
 npm install
-npm test              # 편성표 읽기: 더미 엑셀·한글·PDF 가 같은 결과인지 (7개)
+npm test              # 편성표 읽기: 더미 엑셀·한글·PDF 가 같은 결과인지 (8개)
 npm run test:e2e      # 화면 흐름: 앱 실행 중일 때 크롬으로 확인 (5개)
 npm run screenshots   # README 화면 캡처 다시 만들기
 ```

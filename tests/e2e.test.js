@@ -84,10 +84,10 @@ test('대원명은 눌러야 보이고, 대장을 바꿀 수 있다', async () =
     await click(page, '#saveTeamBtn');
     await sleep(300);
 
-    const card = await lastCard(page);
-    await card.$eval('.btn-members', (b) => b.click());
-    const chips = await (await lastCard(page)).$$eval('.member-chip', (cs) => cs.map((c) => (c.classList.contains('leader') ? '⭐' : '') + c.textContent.replace('⭐', '').trim()));
-    assert.deepEqual(chips, ['⭐예다슬', '노승현', '유초록', '도하늘']);
+    // 카드에는 대원명을 띄우지 않고, 대에 저장만 한다 (편집 창·현황 보고·기록에서 쓴다)
+    const members = await page.evaluate(() => window.fieldSafetyTimer.teams.at(-1).members.map((m) => (m.role === '대장' ? '⭐' : '') + m.name));
+    assert.deepEqual(members, ['⭐예다슬', '노승현', '유초록', '도하늘']);
+    assert.equal(await (await lastCard(page)).$('.team-meta'), null, '카드 아래 상태 줄 없음');
 });
 
 test('경고·위험: 음성·화면 깜빡임·기록, 화면 꺼짐 방지', async () => {
@@ -131,15 +131,106 @@ test('경고·위험: 음성·화면 깜빡임·기록, 화면 꺼짐 방지', a
     assert.deepEqual(page.errors, []);
 });
 
+test('태블릿처럼 기기 알림이 오류를 내도 카드 색이 바뀌고, 경보 정지는 소리만 끄고 위험이 되면 다시 울린다', async () => {
+    const page = await openApp(browser);
+    await startWithDummy(page);
+    await addVehicle(page, '계산119안전센터', '펌프차', 3);
+    await (await lastCard(page)).$eval('.btn-start', (b) => b.click());
+    await sleep(400);
+    // 안드로이드 크롬: 알림 권한이 있어도 new Notification() 은 TypeError
+    await page.evaluate(() => {
+        window.Notification = class {
+            static permission = 'granted';
+            constructor() { throw new TypeError('Illegal constructor'); }
+        };
+        Object.defineProperty(navigator.serviceWorker, 'controller', { value: null });
+        window.fieldSafetyTimer.teams.at(-1).entryTime = Date.now() - 31 * 60000;
+    });
+    // 경고가 되면 카드가 맨 위로 옮겨 가고, 그 직후 0.6초는 누름을 막는다 (잘못 누르기 방지)
+    await page.waitForFunction(() => window.fieldSafetyTimer.teams.at(-1).status === 'warning');
+    await sleep(800);
+    const card = async () => lastCard(page);
+    assert.match(await (await card()).evaluate((c) => c.className), /status-warning/, '경고 색');
+    const alarming = () => page.evaluate(() => window.fieldSafetyTimer.alarmIntervals.has(window.fieldSafetyTimer.teams.at(-1).id));
+    assert.ok(await alarming(), '경보가 울리는 중');
+
+    await (await card()).$eval('.btn-mute', (b) => b.click());
+    await sleep(400);
+    assert.ok(!(await alarming()), '경보 정지');
+    assert.match(await (await card()).evaluate((c) => c.className), /status-warning/, '색과 타이머는 그대로');
+    assert.match(await (await card()).$eval('.btn-mute', (b) => b.textContent), /경보 켜기/);
+    assert.ok(await (await card()).$('.btn-pause'), '일시정지는 그대로');
+    await sleep(1500);
+    assert.ok(!(await alarming()), '같은 단계에서는 다시 울리지 않음');
+
+    await page.evaluate(() => { window.fieldSafetyTimer.teams.at(-1).entryTime = Date.now() - 41 * 60000; });
+    await page.waitForFunction(() => window.fieldSafetyTimer.teams.at(-1).status === 'danger');
+    await sleep(800);
+    assert.match(await (await card()).evaluate((c) => c.className), /status-danger/, '위험 색');
+    assert.ok(await alarming(), '위험이 되면 다시 울림');
+    assert.match(await (await card()).$eval('.btn-mute', (b) => b.textContent), /경보 정지/);
+    assert.ok(await page.evaluate(() => document.body.classList.contains('flash-danger')), '위험 화면 깜빡임');
+    assert.equal(await (await card()).$('.btn-reset'), null, '진입 중에는 초기화 버튼 없음');
+
+    // 위험에서 경보 정지: 소리·화면 깜빡임·카드 깜빡임은 멈추고 빨강 색만 남는다
+    await (await card()).$eval('.btn-mute', (b) => b.click());
+    await sleep(400);
+    assert.ok(!(await alarming()));
+    assert.ok(!(await page.evaluate(() => document.body.classList.contains('flash-danger'))), '화면 깜빡임 멈춤');
+    assert.ok(await page.$eval('#alertFlashBanner', (e) => e.hidden));
+    const muted = await (await card()).evaluate((c) => ({ cls: c.className, anim: getComputedStyle(c).animationName, bg: getComputedStyle(c).backgroundColor }));
+    assert.match(muted.cls, /status-danger/);
+    assert.equal(muted.anim, 'none', '카드 깜빡임 멈춤');
+    assert.equal(muted.bg, 'rgb(212, 42, 32)', '빨강 그대로');
+
+    // 일시정지해도 상태 색은 그대로, 초기화 버튼은 일시정지 때만 (같은 카드 두 번 누름 방지 0.6초가 지난 뒤)
+    await sleep(400);
+    await (await card()).$eval('.btn-pause', (b) => b.click());
+    await sleep(400);
+    const paused = await (await card()).evaluate((c) => ({ cls: c.className, bg: getComputedStyle(c).backgroundColor, sign: c.querySelector('.team-gauge .paused-sign')?.textContent }));
+    assert.match(paused.cls, /status-paused/);
+    assert.equal(paused.bg, 'rgb(212, 42, 32)', '일시정지해도 빨강');
+    assert.equal(paused.sign, '일시정지', '압력계 가운데 일시정지 팻말');
+    assert.ok(await (await card()).$('.btn-reset'), '일시정지하면 초기화 버튼');
+    const logs = await page.evaluate(() => window.fieldSafetyTimer.logs.map((l) => l.type));
+    assert.ok(logs.includes('경보 정지'));
+    assert.deepEqual(page.errors, []);
+});
+
+test('여러 대가 경보여도 소리는 하나로 묶이고, 카드가 옮겨 간 직후 버튼이 잠깐 흐려진다', async () => {
+    const page = await openApp(browser);
+    await startWithDummy(page);
+    await addVehicle(page, '계산119안전센터', '펌프차', 2);
+    await addVehicle(page, '작전119안전센터', '펌프차', 3);
+    await page.evaluate(() => {
+        const app = window.fieldSafetyTimer;
+        window.__rings = [];
+        app.playAlertSound = (level) => window.__rings.push(level);
+        app.teams.filter((t) => t.vehicle).forEach((t, i) => {
+            t.status = 'active';
+            t.entryTime = Date.now() - (i ? 41 : 31) * 60000; // 하나는 경고, 하나는 위험
+        });
+    });
+    await page.waitForFunction(() => document.querySelector('#teamsList').classList.contains('tap-blocked'));
+    await sleep(800);
+    assert.ok(!(await page.$eval('#teamsList', (e) => e.classList.contains('tap-blocked'))), '0.6초 뒤 다시 또렷하게');
+    await page.evaluate(() => { window.__rings = []; });
+    await sleep(6200);
+    const rings = await page.evaluate(() => window.__rings);
+    assert.ok(rings.length >= 1 && rings.length <= 3, `3초에 한 번 (${rings.join()})`);
+    assert.ok(rings.every((r) => r === 'danger'), '가장 심한 단계로');
+    assert.deepEqual(page.errors, []);
+});
+
 test('경고·위험인 대만 위로 오고, 나머지는 등록한 순서 그대로', async () => {
     const page = await openApp(browser);
     await startWithDummy(page);
     await addVehicle(page, '계산119안전센터', '펌프차', 2);
     await addVehicle(page, '작전119안전센터', '펌프차', 3);
-    await addVehicle(page, '계양119구조대', '구조버스', 4);
+    await addVehicle(page, '계양119구조대', '구조차', 4);
     await page.evaluate(() => {
         const app = window.fieldSafetyTimer;
-        const ago = { '계산 펌프차': 8, '작전 펌프차': 41, '구조버스': 31 };
+        const ago = { '계산 펌프차': 8, '작전 펌프차': 41, '계양구조대 구조차': 31 };
         app.teams.forEach((t) => {
             const key = Object.keys(ago).find((k) => t.name.endsWith(k));
             if (key) { t.status = 'active'; t.entryTime = Date.now() - ago[key] * 60000; }
@@ -148,12 +239,8 @@ test('경고·위험인 대만 위로 오고, 나머지는 등록한 순서 그�
     });
     await sleep(1500);
     const names = await page.$$eval('.team-card h3', (hs) => hs.map((h) => h.textContent));
-    assert.deepEqual(names, ['작전 펌프차', '계양구조대 구조버스', '1착대', '2착대', '3착대', '계산 펌프차']);
+    assert.deepEqual(names, ['작전 펌프차', '계양구조대 구조차', '1착대', '2착대', '3착대', '계산 펌프차']);
     assert.match(await page.$eval('.team-card .gauge-time', (e) => e.textContent), /^41:0\d$/);
-    assert.match(await page.$eval('.team-card .team-leader', (e) => e.textContent), /^대장 /);
-    assert.match(await page.$eval('.team-card .team-remain', (e) => e.textContent), /^위험 1분 넘음$/);
-    const remains = await page.$$eval('.team-card .team-remain', (es) => es.map((e) => e.textContent));
-    assert.ok(remains.includes('위험까지 9분') && remains.includes('경고까지 22분'), remains.join());
     assert.deepEqual(page.errors, []);
 });
 
@@ -309,14 +396,86 @@ test('착순: 먼저 진입한 센터가 1착, 같은 센터 대는 같은 색�
     assert.deepEqual(page.errors, []);
 });
 
-test('설정에서 압력계 톤 5가지 중 고르면 바로 바뀌고 다시 열어도 유지', async () => {
+test('카드 정렬: 등록 순서 / 센터별 묶기 / 오래된 순, 위험·경고는 항상 위, 다시 열어도 유지', async () => {
+    const page = await openApp(browser);
+    await startWithDummy(page);
+    // 등록: 작전 펌프차(5분), 계산 펌프차(9분), 작전 화학차(2분) → 착순 1착 계산, 2착 작전
+    await page.evaluate(() => {
+        const app = window.fieldSafetyTimer;
+        const set = [['작전119안전센터', '펌프차', 5], ['계산119안전센터', '펌프차', 9], ['작전119안전센터', '화학차', 2]];
+        app.teams.forEach((t, i) => {
+            Object.assign(t, { center: set[i][0], vehicle: set[i][1], name: `${set[i][0].slice(0, 2)} ${set[i][1]}` });
+            t.status = 'active';
+            t.entryTime = t.firstEntryAt = Date.now() - set[i][2] * 60000;
+        });
+        app.render();
+    });
+    const names = () => page.$$eval('.team-card h3', (hs) => hs.map((h) => h.textContent));
+    assert.deepEqual(await names(), ['작전 펌프차', '계산 펌프차', '작전 화학차'], '기본은 등록 순서');
+
+    const pickOrder = async (id) => {
+        await click(page, '#settingsBtn');
+        await sleep(300);
+        await click(page, `[data-order="${id}"]`);
+        await click(page, '#saveSettingsBtn');
+        await sleep(200);
+    };
+    await click(page, '#settingsBtn');
+    await sleep(300);
+    assert.equal(await page.$$eval('#orderPicks [data-order]', (b) => b.length), 3);
+    await click(page, '[data-order="center"]');
+    assert.deepEqual(await names(), ['작전 펌프차', '계산 펌프차', '작전 화학차'], '저장 전에는 그대로');
+    await click(page, '#saveSettingsBtn');
+    await sleep(200);
+    assert.ok(!(await isShown(page, 'settingsModal')), '저장하면 닫힘');
+    assert.deepEqual(await names(), ['계산 펌프차', '작전 펌프차', '작전 화학차'], '착순대로 센터끼리');
+    await pickOrder('elapsed');
+    assert.deepEqual(await names(), ['계산 펌프차', '작전 펌프차', '작전 화학차'], '오래 들어간 대가 위');
+
+    // 위험이 된 대는 어느 방식이든 맨 위
+    await pickOrder('center');
+    await page.evaluate(() => {
+        const app = window.fieldSafetyTimer;
+        Object.assign(app.teams[2], { status: 'danger' });
+        app.render();
+    });
+    assert.deepEqual(await names(), ['작전 화학차', '계산 펌프차', '작전 펌프차']);
+
+    await page.reload({ waitUntil: 'networkidle0' });
+    assert.equal(await page.evaluate(() => window.fieldSafetyTimer.settings.cardOrder), 'center');
+    assert.deepEqual(page.errors, []);
+});
+
+test('설정에서 압력계 톤 5가지 중 고르고 저장해야 바뀌고, 그냥 닫으면 그대로, 다시 열어도 유지', async () => {
     const page = await openApp(browser);
     await startWithDummy(page);
     await click(page, '#settingsBtn');
     await sleep(300);
-    assert.equal(await page.$$eval('.theme-pick', (b) => b.length), 5);
+    assert.equal(await page.$$eval('#themePicks .theme-pick', (b) => b.length), 5);
     assert.equal(await page.$eval('html', (h) => h.dataset.gauge), 'graphite');
+    // 고르고 그냥 닫으면 바뀌지 않는다
     await click(page, '.theme-pick[data-theme="white"]');
+    assert.equal(await page.$eval('html', (h) => h.dataset.gauge), 'graphite', '저장 전에는 그대로');
+    // 바꾼 채로 닫으려 하면 한 번 묻는다: 아니요 → 창은 그대로, 예 → 버리고 닫음
+    await click(page, '#closeSettingsBtn');
+    await sleep(200);
+    assert.ok(await isShown(page, 'confirmDialog'), '저장하지 않고 닫을지 물음');
+    await page.keyboard.press('Escape');
+    await sleep(200);
+    assert.ok(!(await isShown(page, 'confirmDialog')) && (await isShown(page, 'settingsModal')), 'Esc 는 아니요');
+    await click(page, '#closeSettingsBtn');
+    await sleep(200);
+    await click(page, '#confirmYes');
+    await sleep(200);
+    assert.ok(!(await isShown(page, 'settingsModal')));
+    assert.equal(await page.$eval('html', (h) => h.dataset.gauge), 'graphite', '닫으면 버림');
+    await click(page, '#settingsBtn');
+    await sleep(300);
+    assert.equal(await page.$eval('.theme-pick[data-theme="graphite"]', (b) => b.getAttribute('aria-pressed')), 'true');
+    // 고르고 저장하면 바뀐다
+    await click(page, '.theme-pick[data-theme="white"]');
+    await click(page, '#saveSettingsBtn');
+    await sleep(200);
     assert.equal(await page.$eval('html', (h) => h.dataset.gauge), 'white');
     assert.equal(await page.$eval('.gauge-face', (c) => getComputedStyle(c).fill), 'rgb(255, 255, 255)');
     await page.reload({ waitUntil: 'networkidle0' });
@@ -402,10 +561,15 @@ test('진입 대원을 아무도 체크하지 않으면 시작 안 됨, 경고 �
     // 경고 45분 > 위험 40분은 저장하지 않는다
     await click(page, '#settingsBtn');
     await sleep(300);
-    await page.$eval('#warningTime', (e) => { e.value = '45'; e.dispatchEvent(new Event('change')); });
+    await page.$eval('#warningTime', (e) => { e.value = '45'; });
+    await click(page, '#saveSettingsBtn');
+    await sleep(200);
     assert.equal(await page.evaluate(() => window.fieldSafetyTimer.settings.warningTime), 30);
-    assert.equal(await page.$eval('#warningTime', (e) => e.value), '30');
-    await page.evaluate(() => window.fieldSafetyTimer.closeAllModals());
+    assert.ok(await isShown(page, 'settingsModal'), '저장 안 되고 창은 열린 채로 고칠 수 있게');
+    await click(page, '#cancelSettingsBtn');
+    await sleep(200);
+    await click(page, '#confirmYes');
+    await sleep(200);
 
     // 진입 중인 대를 지우면 한 번 더 경고하고 기록을 남긴다
     await page.evaluate(() => {

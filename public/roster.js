@@ -382,7 +382,10 @@
         if (full && !/^(센터장)/.test(full[1])) return full[1];
         const br = t.match(/\[([^\]]+)\]/);
         if (br) return br[1].trim() + '119안전센터';
-        return t.split(/[\n ]/)[0] || '출동대';
+        // "계 산\n(센터장: 일근)" 처럼 첫 줄에 센터 이름만 쓴 경우
+        const first = norm(String(text || '').split(/\r?\n|\(/)[0]);
+        if (!first) return '출동대';
+        return /구조대$/.test(first) ? first : first + '119안전센터';
     }
 
     function findCell(grid, test, rows) {
@@ -416,7 +419,9 @@
             // 차량 오른쪽 열이 '운전'만 덮으면 그 다음 진압까지 포함
             tb = Math.max(tb, ta + 1);
         }
-        const dutyTeam = duty && duty[1] > vc ? norm(grid[duty[0]][duty[1]]).replace(/\(.*\)/, '') : '';
+        // "3팀(당번)" / "당번(1팀)" 둘 다 → "3팀" / "1팀"
+        const dutyText = duty && duty[1] > vc ? norm(grid[duty[0]][duty[1]]) : '';
+        const dutyTeam = (dutyText.match(/\d+팀/) || [dutyText.replace(/\(.*\)/, '')])[0];
 
         let driverCol = null;
         let crewCol = null;
@@ -439,16 +444,18 @@
             const row = grid[r];
             const vRaw = String(row[vc] || '').trim();
             const v = norm(vRaw);
-            if (/사고내용|소내근무|근무자|^시간$|비고/.test(v)) break;
+            if (/사고내용|소내근무|근무자|^시간$|비고|범례/.test(v)) break;
             if (!v) continue;
+            if (/^\d+대$/.test(v)) continue; // 센터별 소계 줄 ("13대 | 당7 | …")
             const center = centerCol !== null ? centerName(row[centerCol]) : '출동대';
             const key = [center, vRaw, row[driverCol], row[crewCol]].join('|');
             if (key === prevKey) continue; // 병합으로 같은 줄이 반복된 경우
             prevKey = key;
 
             const paren = vRaw.indexOf('(');
-            const name = (paren > 0 ? vRaw.slice(0, paren) : vRaw).replace(/\s*\n\s*/g, '').trim();
-            const equipment = paren > 0 ? cleanName(vRaw.slice(paren)).replace(/\s*\n\s*/g, ' ') : '';
+            // "생활\n구조차" → 생활구조차, "전기차 화재진압 \n트레일러" → 전기차 화재진압 트레일러
+            const name = (paren > 0 ? vRaw.slice(0, paren) : vRaw).replace(/[ \t]+\r?\n\s*/g, ' ').replace(/\s*\n\s*/g, '').trim();
+            const equipment = paren > 0 ? cleanName(vRaw.slice(paren)).replace(/\s*\n\s*/g, ' ').replace(/\)\s*\(/g, ') (') : '';
 
             let target = centers.find((c) => c.name === center);
             if (!target) centers.push((target = { name: center, vehicles: [] }));
@@ -488,6 +495,12 @@
                 const hit = findCell(g, (s) => /\d{4}년\d{1,2}월\d{1,2}일/.test(s));
                 if (hit) roster.date = String(g[hit[0]][hit[1]]).replace(/\s+/g, ' ').trim();
             }
+        }
+        // 이름 없이 "구조대"라고만 쓴 칸 → "계양119구조대" (소방서 이름에서)
+        const station = (roster.org.match(/([가-힣]+)소방서/) || [])[1];
+        if (station) {
+            const short = station.replace(/^(인천|서울|부산|대구|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)(?=[가-힣]{2})/, '');
+            roster.centers.forEach((c) => { if (c.name === '구조대') c.name = short + '119구조대'; });
         }
         return roster;
     }

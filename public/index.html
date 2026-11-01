@@ -188,6 +188,10 @@
                     <div id="themePicks" class="theme-picks"></div>
                 </div>
                 <div class="setting-group">
+                    <label>카드 정렬 <small class="setting-note">위험·경고인 대는 항상 맨 위</small></label>
+                    <div id="orderPicks" class="theme-picks"></div>
+                </div>
+                <div class="setting-group">
                     <label>알림 활성화</label>
                     <div class="toggle-switch">
                         <input type="checkbox" id="soundEnabled" checked>
@@ -212,6 +216,10 @@
                 <div class="setting-group">
                     <button id="clearDataBtn" class="btn btn-warning">모든 데이터 초기화</button>
                 </div>
+            </div>
+            <div class="modal-actions settings-actions">
+                <button type="button" id="cancelSettingsBtn" class="btn btn-secondary">취소</button>
+                <button type="button" id="saveSettingsBtn" class="btn btn-primary">저장</button>
             </div>
         </div>
     </div>

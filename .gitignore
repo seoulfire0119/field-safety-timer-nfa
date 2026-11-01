@@ -8,7 +8,9 @@
 
 # 실명이 들어 있는 원본 편성표 (제출·공유 제외)
 출동대편성표.png
+/*.xlsx
 node_modules
+__pycache__/
 
 # Firebase 배포 캐시
 .firebase/
