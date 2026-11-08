@@ -7,6 +7,9 @@ const CARD_ORDERS = [
     { id: 'elapsed', name: '오래된 순', desc: '오래 들어가 있는 대가 위', preview: [1, 0, 0] }
 ];
 
+// 지난 현장 기록을 몇 개까지 남길지 (한 현장 기록은 수십 KB 라 기기 저장 공간에 부담 없음)
+const PAST_LIMIT = 20;
+
 class FieldSafetyTimer {
     constructor() {
         this.teams = [];
@@ -60,6 +63,7 @@ class FieldSafetyTimer {
             this.logs = await loadData('logs', []);
             this.arrivals = await loadData('arrivals', []);
             this.pastIncidents = await loadData('pastIncidents', []);
+            this.exportedLogCount = await loadData('exportedLogCount', 0);
 
             this.teams = savedTeams;
             this.settings = { ...this.settings, ...savedSettings };
@@ -72,8 +76,10 @@ class FieldSafetyTimer {
             this.applyTheme();
 
             // 새로고침·다시 열기는 새 현장이다: 대 목록·활동 기록·착순을 비운다 (편성표·설정은 그대로).
-            // 다만 진입 중인 대가 남아 있으면 실수로 새로고침했을 수 있으므로 init 에서 물어본다.
-            this.resumePending = this.teams.some(t => t.entryTime && t.status !== 'waiting');
+            // 다만 대나 기록이 하나라도 남아 있으면 실수로 새로고침했거나(휴대폰이 탭을 알아서 다시 열기도 함)
+            // 1차 진입조가 나와 다음 진입을 기다리는 중일 수 있으므로 init 에서 물어본다.
+            this.resumePending = this.logs.length > 0 ||
+                this.teams.some(t => this.isUnit(t) || (t.entryTime && t.status !== 'waiting'));
             if (!this.resumePending) this.clearIncident();
 
         } catch (error) {
@@ -82,14 +88,16 @@ class FieldSafetyTimer {
     }
 
     // 현장 기록 비우기: 대 목록(빈 목록, '+ 대 추가' 칸에서 시작)·활동 기록·착순
-    // 지운 현장의 활동 기록은 '지난 현장 기록'으로 최근 5개까지 남겨 둔다 (나중에 내려받을 수 있게)
+    // 지운 현장의 활동 기록은 '지난 현장 기록'으로 최근 PAST_LIMIT 개까지 남겨 둔다 (나중에 내려받을 수 있게)
     clearIncident() {
         this.stopAllAlarms();
         this.timers.clear();
         if (this.logs.length) {
-            this.pastIncidents = [{ at: this.logs[0].at, logs: this.logs }, ...(this.pastIncidents || [])].slice(0, 5);
-            saveData('pastIncidents', this.pastIncidents);
+            const exported = this.exportedLogCount >= this.logs.length;
+            this.archiveIncident({ at: this.logs[0].at, logs: this.logs, exported });
         }
+        this.exportedLogCount = 0;
+        saveData('exportedLogCount', 0);
         this.teams = [];
         this.logs = [];
         this.arrivals = [];
@@ -99,12 +107,36 @@ class FieldSafetyTimer {
         saveData('arrivals', this.arrivals);
     }
 
+    // 지난 현장 기록에 넣는다. 가득 차면 이미 내려받은 기록부터 지우고,
+    // 내려받지 않은 기록을 지울 수밖에 없을 때만 그것을 지우며 알린다
+    archiveIncident(incident) {
+        const list = [incident, ...(this.pastIncidents || [])];
+        let lostUnexported = false;
+        while (list.length > PAST_LIMIT) {
+            let i = -1;
+            for (let k = list.length - 1; k > 0; k--) if (list[k].exported) { i = k; break; }
+            if (i < 0) { i = list.length - 1; lostUnexported = true; }
+            list.splice(i, 1);
+        }
+        this.pastIncidents = list;
+        saveData('pastIncidents', list);
+        if (lostUnexported && document.getElementById('toast')) {
+            this.showToast(`지난 현장 기록이 ${PAST_LIMIT}개를 넘어, 내려받지 않은 가장 오래된 기록 1개가 지워졌습니다.`, 'warning');
+        }
+    }
+
     showResumeDialog() {
         const inside = this.teams.filter(t => t.entryTime && t.status !== 'waiting');
+        const units = this.teams.filter(t => this.isUnit(t));
+        document.getElementById('resumeTitle').textContent =
+            inside.length ? '진입 중인 대가 있습니다' : '앞 현장이 남아 있습니다';
+        const now = inside.length
+            ? inside.map(t => `${t.name} ${Math.floor(this.teamElapsed(t) / 60000)}분`).join(', ')
+            : `등록된 대 ${units.length}개 · 활동 기록 ${this.logs.length}건 (진입 중인 대 없음)`;
         document.getElementById('resumeMessage').textContent =
-            `${inside.map(t => `${t.name} ${Math.floor(this.teamElapsed(t) / 60000)}분`).join(', ')}
-같은 현장이면 '이어서 하기'를 누르세요. 시간은 그대로 이어집니다.
-새 현장이면 '새 현장 시작'을 누르면 대 목록과 활동 기록이 모두 지워집니다.`;
+            `${now}
+같은 현장이면 '이어서 하기'를 누르세요. ${inside.length ? '시간은 그대로 이어집니다.' : '대 목록과 기록이 그대로 남습니다.'}
+새 현장이면 '새 현장 시작'을 누르세요. 지금 기록은 '지난 현장 기록'으로 옮겨 둡니다.`;
         document.getElementById('resumeContinueBtn').onclick = () => this.closeModal('resumeDialog');
         document.getElementById('resumeExportBtn').onclick = () => this.exportLogs();
         document.getElementById('resumeNewBtn').onclick = () => {
@@ -213,7 +245,12 @@ class FieldSafetyTimer {
         document.getElementById('pastLogs').addEventListener('click', (e) => {
             const btn = e.target.closest('[data-past]');
             const past = btn && (this.pastIncidents || [])[+btn.dataset.past];
-            if (past) this.exportLogs(past.logs);
+            if (past) {
+                this.exportLogs(past.logs);
+                past.exported = true;
+                saveData('pastIncidents', this.pastIncidents);
+                this.renderPastLogs();
+            }
         });
         document.getElementById('clearLogBtn').addEventListener('click', () => {
             this.showConfirmDialog('활동 기록을 모두 지우시겠습니까?', () => {
@@ -1781,10 +1818,12 @@ ${missing.map(m => `· ${m}`).join('\n')}
         box.hidden = !past.length;
         box.innerHTML = past.length ? `
             <h3>지난 현장 기록</h3>
-            <p class="roster-hint">새 현장을 시작하면서 비운 기록입니다. 최근 5개 현장까지 이 기기에 남아 있습니다.</p>
+            <p class="roster-hint">새 현장을 시작하면서 비운 기록입니다. 최근 ${PAST_LIMIT}개 현장까지 이 기기에 남아 있고,
+                가득 차면 내려받은 기록부터 지워집니다.</p>
             ${past.map((p, i) => `
                 <button type="button" class="btn btn-secondary past-log" data-past="${i}">
                     ${this.dateText(p.at)} ${this.clockText(p.at)} 현장 · ${p.logs.length}건 내려받기
+                    <span class="past-mark ${p.exported ? 'done' : 'todo'}">${p.exported ? '받음' : '안 받음'}</span>
                 </button>`).join('')}` : '';
     }
 
@@ -1826,6 +1865,10 @@ ${missing.map(m => `· ${m}`).join('\n')}
                     l.elapsed != null ? this.elapsedText(l.elapsed) : '', l.members, l.location || ''
                 ];
             }));
+        if (logs === this.logs) {
+            this.exportedLogCount = logs.length;
+            saveData('exportedLogCount', logs.length);
+        }
         const csv = '\ufeff' + rows.map(r => r.map(cell).join(',')).join('\r\n');
         const d = new Date(logs === this.logs ? Date.now() : logs[0].at);
         const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}_${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
@@ -2428,6 +2471,7 @@ ${missing.map(m => `· ${m}`).join('\n')}
         this.rosters = [];
         this.logs = [];
         this.pastIncidents = [];
+        this.exportedLogCount = 0;
         this.arrivals = [];
         this.timers.clear();
         clearAllData();

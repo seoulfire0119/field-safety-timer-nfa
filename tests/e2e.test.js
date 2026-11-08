@@ -791,7 +791,7 @@ test('진입 대원을 아무도 체크하지 않으면 시작 안 됨, 경고 �
     assert.deepEqual(page.errors, []);
 });
 
-test('새로고침하면 새 현장: 진입 중인 대가 없으면 바로 비우고, 있으면 이어서/새로 묻는다', async () => {
+test('새로고침하면 새 현장: 대·기록이 없으면 바로 비우고, 남아 있으면(진입 중이 아니어도) 이어서/새로 묻는다', async () => {
     const page = await openApp(browser);
     await startWithDummy(page);
     await blankTeams(page);
@@ -799,7 +799,16 @@ test('새로고침하면 새 현장: 진입 중인 대가 없으면 바로 비�
     await page.evaluate(() => window.fieldSafetyTimer.addLog(window.fieldSafetyTimer.teams.at(-1), '테스트', 0));
     await page.reload({ waitUntil: 'networkidle0' });
     await sleep(300);
-    assert.ok(!(await isShown(page, 'resumeDialog')));
+    // 진입 중인 대는 없지만 대·기록이 남아 있으므로 묻는다 (1차 진입조가 나오고 다음 진입을 기다리는 중일 수 있음)
+    assert.ok(await isShown(page, 'resumeDialog'));
+    assert.equal(await page.$eval('#resumeTitle', (e) => e.textContent), '앞 현장이 남아 있습니다');
+    assert.match(await page.$eval('#resumeMessage', (e) => e.textContent), /활동 기록 1건/);
+    await click(page, '#resumeContinueBtn');
+    assert.equal(await page.evaluate(() => window.fieldSafetyTimer.logs.length), 1, '이어서 하기면 기록 그대로');
+    await page.reload({ waitUntil: 'networkidle0' });
+    await sleep(300);
+    await click(page, '#resumeNewBtn');
+    await sleep(300);
     // 빈 목록 + '+ 대 추가' 칸으로 시작
     assert.deepEqual(await page.$$eval('.team-card h3', (hs) => hs.map((h) => h.textContent)), []);
     assert.ok(await page.$('.add-tile'), '+ 대 추가 칸');
@@ -811,7 +820,11 @@ test('새로고침하면 새 현장: 진입 중인 대가 없으면 바로 비�
     await sleep(300);
     await click(page, '#showLogBtn');
     await sleep(300);
-    assert.match(await page.$eval('#pastLogs', (e) => e.textContent), /지난 현장 기록[\s\S]*1건 내려받기/);
+    assert.match(await page.$eval('#pastLogs', (e) => e.textContent), /지난 현장 기록[\s\S]*1건 내려받기[\s\S]*안 받음/);
+    await click(page, '#pastLogs [data-past="0"]');
+    await sleep(200);
+    assert.match(await page.$eval('#pastLogs', (e) => e.textContent), /1건 내려받기\s*받음/);
+    assert.equal(await page.evaluate(() => window.fieldSafetyTimer.pastIncidents[0].exported), true);
     await page.evaluate(() => window.fieldSafetyTimer.closeAllModals());
     await page.evaluate(() => window.fieldSafetyTimer.closeAllModals());
 
@@ -836,6 +849,29 @@ test('새로고침하면 새 현장: 진입 중인 대가 없으면 바로 비�
     await sleep(300);
     assert.equal(await page.evaluate(() => window.fieldSafetyTimer.teams.filter((t) => t.entryTime).length), 0);
     assert.ok(!(await isShown(page, 'resumeDialog')));
+    assert.deepEqual(page.errors, []);
+});
+
+test('지난 현장 기록은 20개까지, 가득 차면 내려받은 기록부터 지운다', async () => {
+    const page = await openApp(browser);
+    await startWithDummy(page);
+    const result = await page.evaluate(() => {
+        const app = window.fieldSafetyTimer;
+        const log = (n) => [{ at: n, type: '테스트' }];
+        // 오래된 순서로 20개: 가장 오래된 것(0)은 안 받음, 그다음(1)은 받음
+        app.pastIncidents = Array.from({ length: 20 }, (_, i) => ({ at: 19 - i, logs: log(19 - i), exported: (19 - i) === 1 }));
+        app.archiveIncident({ at: 100, logs: log(100), exported: false });
+        const afterOne = app.pastIncidents.map((p) => p.at);
+        // 받은 기록이 없으면 가장 오래된 기록을 지운다
+        app.archiveIncident({ at: 101, logs: log(101), exported: false });
+        return { afterOne, afterTwo: app.pastIncidents.map((p) => p.at) };
+    });
+    assert.equal(result.afterOne.length, 20);
+    assert.ok(result.afterOne.includes(0), '안 받은 가장 오래된 기록은 남김');
+    assert.ok(!result.afterOne.includes(1), '받은 기록을 먼저 지움');
+    assert.equal(result.afterTwo.length, 20);
+    assert.ok(!result.afterTwo.includes(0), '받은 기록이 없으면 가장 오래된 것');
+    assert.equal(result.afterTwo[0], 101);
     assert.deepEqual(page.errors, []);
 });
 

@@ -29,5 +29,5 @@ function deleteData(key) {
 }
 
 function clearAllData() {
-  ["teams", "settings", "roster", "rosters", "logs", "pastIncidents", "arrivals"].forEach(deleteData);
+  ["teams", "settings", "roster", "rosters", "logs", "pastIncidents", "exportedLogCount", "arrivals"].forEach(deleteData);
 }

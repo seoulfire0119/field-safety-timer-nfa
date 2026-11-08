@@ -389,7 +389,7 @@
                     <button id="clearLogBtn" class="btn btn-secondary">기록 지우기</button>
                 </div>
                 <div id="logList" class="log-list"></div>
-                <!-- 새 현장을 시작하며 비운 기록 (최근 5개 현장) -->
+                <!-- 새 현장을 시작하며 비운 기록 (최근 20개 현장) -->
                 <div id="pastLogs" class="past-logs" hidden></div>
             </div>
         </div>
@@ -423,7 +423,7 @@
     <div id="resumeDialog" class="modal notice-modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>진입 중인 대가 있습니다</h2>
+                <h2 id="resumeTitle">진입 중인 대가 있습니다</h2>
             </div>
             <div class="modal-body">
                 <p id="resumeMessage"></p>
